@@ -1,23 +1,35 @@
 import sqlite3
 import pandas as pd
 
-# substitute username with your username
 username = ""
-conn = sqlite3.connect("/Users/" + username + "/Library/Messages/chat.db")
-# ~/Library/Containers/com.apple.iChat/Data/Library/Messages
+messages_location = "/Users/" + username + "/Library/Messages/chat.db"
+messages_location_alt = "~/Library/Containers/com.apple.iChat/Data/Library/Messages"
 
-# get the names of the tables in the database
+conn = sqlite3.connect()
 
-cursor = conn.cursor()
+get_table_names(conn)
+get_messages(conn)
 
-# cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-cursor.execute("SELECT text FROM message ORDER BY ROWID DESC LIMIT 20;")
+def get_table_names(conn):
+	"""
+	get all table names
+	"""
+	query = "SELECT name FROM sqlite_master WHERE type='table';";
+	cur = conn.cursor()
+    cur.execute(query)
 
-for table in cursor.fetchall():
-    print(table)
+    rows = cur.fetchall()
 
-# messages = pd.read_sql_query("select * from message order by rowid desc limit 10", conn)
-# print(messages)
+    return rows
 
+def get_messages(conn):
+	"""
+	get messages
+	"""
+	query = "SELECT text FROM message ORDER BY ROWID DESC LIMIT 20;"
+	cur = conn.cursor()
+    cur.execute(query)
 
+    rows = cur.fetchall()
 
+    return rows
