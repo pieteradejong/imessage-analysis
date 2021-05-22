@@ -3,24 +3,19 @@ from sqlite3 import Error
 import pandas as pd
 
 
-
-
-get_table_names(conn)
-get_messages(conn)
-
 def create_connection(db_file):
-    """ 
-    create a database connection
-    :param db_file: database file
-    :return: Connection object or None
-    """
-    conn = None
-    try:
-        conn = sqlite3.connect(db_file)
-    except Error as e:
-        print(e)
+	""" 
+	create a database connection
+	:param db_file: database file
+	:return: Connection object or None
+	"""
+	conn = None
+	try:
+		conn = sqlite3.connect(db_file)
+	except Error as e:
+		print(e)
 
-    return conn
+	return conn
 
 def get_table_names(conn):
 	"""
@@ -28,13 +23,13 @@ def get_table_names(conn):
 	:param conn: database connection
 	:return rows: query result
 	"""
-	query = "SELECT `name` FROM `sqlite_master` WHERE `type`='table';";
+	query = "SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
 	cur = conn.cursor()
-    cur.execute(query)
+	cur.execute(query)
 
-    rows = cur.fetchall()
+	rows = cur.fetchall()
 
-    return rows
+	return rows
 
 def get_messages(conn):
 	"""
@@ -44,28 +39,27 @@ def get_messages(conn):
 	"""
 	query = "SELECT `text` FROM `message` ORDER BY `ROWID` DESC LIMIT 20;"
 	cur = conn.cursor()
-    cur.execute(query)
+	cur.execute(query)
 
-    rows = cur.fetchall()
+	rows = cur.fetchall()
 
-    return rows
-
+	return rows
 
 def main():
-    username = ""
+	username = "pdejong"
 	db_file = "/Users/" + username + "/Library/Messages/chat.db"
 	db_file_alt = "~/Library/Containers/com.apple.iChat/Data/Library/Messages"
 
-	conn = sqlite3.connect()
+	conn = create_connection(db_file)
+	with conn:
+		print("Table names:")
+		table_names = get_table_names(conn)
+		print(table_names)
 
-    conn = create_connection(database)
-    with conn:
-        print("1. Query task by priority:")
-        select_task_by_priority(conn, 1)
-
-        print("2. Query all tasks")
-        select_all_tasks(conn)
-
+		print("Chat messages")
+		messages = get_messages(conn)
+		print(messages)
 
 if __name__ == '__main__':
-    main()
+	main()
+
