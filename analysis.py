@@ -47,10 +47,10 @@ def get_messages(conn):
 
 def main():
 	username = "pdejong"
-	db_file = "/Users/" + username + "/Library/Messages/chat.db"
-	db_file_alt = "~/Library/Containers/com.apple.iChat/Data/Library/Messages"
+	db_file_location = "/Users/" + username + "/Library/Messages/chat.db"
+	db_file_location_alt = "~/Library/Containers/com.apple.iChat/Data/Library/Messages"
 
-	conn = create_connection(db_file)
+	conn = create_connection(db_file_location)
 	with conn:
 		print("Table names:")
 		table_names = get_table_names(conn)
