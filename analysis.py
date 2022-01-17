@@ -1,6 +1,6 @@
 import sqlite3
 from sqlite3 import Error
-import pandas as pd
+# import pandas as pd
 
 
 def create_connection(db_file):
@@ -17,49 +17,54 @@ def create_connection(db_file):
 
 	return conn
 
-def get_table_names(conn):
+def get_table_names(cur):
 	"""
 	get all table names
 	:param conn: database connection
 	:return rows: query result
 	"""
 	query = "SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
-	cur = conn.cursor()
 	cur.execute(query)
 
 	rows = cur.fetchall()
 
 	return rows
 
-def get_messages(conn):
+def get_messages(cur):
 	"""
 	get messages
 	:param conn: database connection
 	:return rows: query result
 	"""
 	query = "SELECT `text` FROM `message` ORDER BY `ROWID` DESC LIMIT 20;"
-	cur = conn.cursor()
 	cur.execute(query)
 
 	rows = cur.fetchall()
 
 	return rows
 
+def get_contacts_created_in_timeframe(cur, start, end):
+	# query = " SELECT  "
+
+
+def 
+
 def main():
-	username = "pdejong"
-	db_file_location = "/Users/" + username + "/Library/Messages/chat.db"
-	db_file_location_alt = "~/Library/Containers/com.apple.iChat/Data/Library/Messages"
+	db_file = "/Users/pieterdejong/Library/Messages/chat.db"
+	conn = None
+	try:
+		conn = sqlite3.connect(db_file)
+	except Error as e:
+		print(e)
 
-	conn = create_connection(db_file_location)
-	with conn:
-		print("Table names:")
-		table_names = get_table_names(conn)
-		print(table_names)
+	cur = conn.cursor()
 
-		print("Chat messages")
-		messages = get_messages(conn)
-		print(messages)
+	cur.execute(" select name from sqlite_master where type = 'table' ")
+	for name in cur.fetchall():
+		print(name)
+
+	return conn
+
 
 if __name__ == '__main__':
 	main()
-
