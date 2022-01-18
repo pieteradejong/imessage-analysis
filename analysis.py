@@ -30,6 +30,12 @@ def get_table_names(cur):
 
 	return rows
 
+def get_columns_for_table(conn, table_name):
+	cur = conn.execute("select * from " + table_name + ";")
+
+	return cur.description
+
+
 def get_messages(cur):
 	"""
 	get messages
@@ -45,9 +51,10 @@ def get_messages(cur):
 
 def get_contacts_created_in_timeframe(cur, start, end):
 	# query = " SELECT  "
+	pass
 
 
-def 
+# def get_last_msgs_for_
 
 def main():
 	db_file = "/Users/pieterdejong/Library/Messages/chat.db"
@@ -59,9 +66,14 @@ def main():
 
 	cur = conn.cursor()
 
-	cur.execute(" select name from sqlite_master where type = 'table' ")
-	for name in cur.fetchall():
-		print(name)
+	tables = get_table_names(cur)
+	for name in tables:
+		print("`" + name[0] + "`")
+		cols = get_columns_for_table(conn, name[0])
+		for c in cols:
+			print("> " + c[0])
+
+	
 
 	return conn
 
