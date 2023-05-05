@@ -1,16 +1,27 @@
 # imessage-analysis
 
-Functionality to add:
+# Project prupose and audience
 
-* add __init__.py file to make project a package
-* Get date when db last-updated
-* ...
+Purpose: enable programmatic analysis my own iMessages, since I find my iPhone and Mac iMessage apps lacking in that area.
 
+Target audience: developers, who know how to "copy your iMessage chat database file, likely `chat.db` into your project folder."
 
 ## Usage
 
 * Expects database file to be in same directory as `analysis.py`
 
+# Product roadmap
+
+## Milestone 0.1: Ability to read table names from `.db` file
+
+* Complete
+
+## Current
+* add __init__.py file to make project a package
+* Get date when db last-updated
+* ...
+
+## Milestone 0.X: Add UI with visualization
 
 # Database structure
 
