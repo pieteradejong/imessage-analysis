@@ -10,22 +10,33 @@ Target audience: developers, who know how to "copy your iMessage chat database f
 
 * iMessage data is loaded from the `[chat].db` file stored on your Mac. This may require your Messages app to be configured to sync with between iPhone and Mac. So you need **read-access** to `chat.db`. Write access is not required, and this package makes no changes to this file. Any changes only happen to copies of the file.
 
+### Quick note on local Message files, on Mac
+* `[HOME_FOLDER/]Library/Messages/chat.db` - chat data
+* `[HOME_FOLDER/]Library/Messages/chat.db-shm` 
+* `[HOME_FOLDER/]Library/Messages/chat.db-wal`
+* `[HOME_FOLDER/]Library/Messages/Attachments` - message attachments
+
 ## Usage
 
 * Expects database file to be in same directory as `analysis.py`
 
+
+
+
 # Product roadmap
 
-## Milestone 0.1: Ability to read table names from `.db` file
+## Milestone v0.1: Ability to read table names from `.db` file
 
 * Complete
 
 ## Current
 * add __init__.py file to make project a package
 * Get date when db last-updated
-* ...
+* TODO add "create" queries to new `.sql` file
 
-## Milestone 0.X: Add UI with visualization
+## Milestone v0.X: Add UI with visualization
+
+## Milestone v1.0: Self-hosted web app for regular use
 
 # Database structure
 
@@ -111,9 +122,20 @@ Target audience: developers, who know how to "copy your iMessage chat database f
 * your most actively messages sent during 24hrs
 
 
-## Appendix
+## Appendix - Useful resources and links
 
-### All tables and columns
+I used the following for inspiration:
+https://stmorse.github.io/journal/iMessage.html
+* Analysis and query ideas.
+https://spin.atomicobject.com/2020/05/22/search-imessage-sql/
+* Analysis and query ideas.
+https://linuxsleuthing.blogspot.com/2015/01/getting-attached-apple-messaging.html
+* Description of figuring out Message attachments. And the inspiration to add full `CREATE TABLE` `.sql` file to the repo(a TODO as of this writing).
+https://github.com/dsouzarc/iMessageAnalyzer
+* Existing but older analysis app for Mac. Used for feature and visualization ideas.
+
+
+## Appendix - Tables and columns list
 
 `_SqliteDatabaseProperties`
 > key
