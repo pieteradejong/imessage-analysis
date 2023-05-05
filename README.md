@@ -6,6 +6,10 @@ Purpose: enable programmatic analysis my own iMessages, since I find my iPhone a
 
 Target audience: developers, who know how to "copy your iMessage chat database file, likely `chat.db` into your project folder."
 
+## Requirements
+
+* iMessage data is loaded from the `[chat].db` file stored on your Mac. This may require your Messages app to be configured to sync with between iPhone and Mac. So you need **read-access** to `chat.db`. Write access is not required, and this package makes no changes to this file. Any changes only happen to copies of the file.
+
 ## Usage
 
 * Expects database file to be in same directory as `analysis.py`
