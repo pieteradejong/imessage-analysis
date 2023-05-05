@@ -11,28 +11,31 @@ Target audience: developers, who know how to "copy your iMessage chat database f
 * iMessage data is loaded from the `[chat].db` file stored on your Mac. This may require your Messages app to be configured to sync with between iPhone and Mac. So you need **read-access** to `chat.db`. Write access is not required, and this package makes no changes to this file. Any changes only happen to copies of the file.
 
 ### Quick note on local Message files, on Mac
-* `[HOME_FOLDER/]Library/Messages/chat.db` - chat data
-* `[HOME_FOLDER/]Library/Messages/chat.db-shm` 
-* `[HOME_FOLDER/]Library/Messages/chat.db-wal`
+* `[HOME_FOLDER/]Library/Messages/chat.db` - actual chat data.
 * `[HOME_FOLDER/]Library/Messages/Attachments` - message attachments
+* `[HOME_FOLDER/]Library/Messages/chat.db-shm` - SQLite-specific file, irrelevant to analyis.
+* `[HOME_FOLDER/]Library/Messages/chat.db-wal` - "write-ahead log", relevant only operationally, irrelevant to analysis.
+
 
 ## Usage
 
 * Expects database file to be in same directory as `analysis.py`
 
 
-
-
 # Product roadmap
 
+## Uncateogorized todos/ideas
+* Add `Attachments` folder analysis
+* add __init__.py file to make project a package
+* Get date when db last-updated
+* TODO add "create" queries to new `.sql` file
+* 
 ## Milestone v0.1: Ability to read table names from `.db` file
 
 * Complete
 
 ## Current
-* add __init__.py file to make project a package
-* Get date when db last-updated
-* TODO add "create" queries to new `.sql` file
+
 
 ## Milestone v0.X: Add UI with visualization
 
@@ -135,7 +138,8 @@ https://github.com/dsouzarc/iMessageAnalyzer
 * Existing but older analysis app for Mac. Used for feature and visualization ideas.
 
 
-## Appendix - Tables and columns list
+## Appendix - Brief description of all tables
+(For schema details, see `.sql` file on in project root directory.)
 
 `_SqliteDatabaseProperties`
 > key
