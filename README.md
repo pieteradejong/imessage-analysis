@@ -1,5 +1,16 @@
 # imessage-analysis
 
+Functionality to add:
+
+* add __init__.py file to make project a package
+* Get date when db last-updated
+* ...
+
+
+## Usage
+
+* Expects database file to be in same directory as `analysis.py`
+
 
 # Database structure
 
@@ -50,7 +61,7 @@
 
 `message`
 
-* table description
+* Arguably the most important table along with `handle` ("contacts" i.e. people). Contains the body of any message sent or received. 
 
 `chat`
 
@@ -68,6 +79,21 @@
 
 * For this script to read your iMessages database file, it needs permission to do so. You can add the relevant application, e.g. Terminal, iTerm, or other, in System Preferences -> Security & Privacy -> Full Disk Access. Do so at your own risk.
 
+
+## Project TODO's
+* Separate file for SQL queries
+* Function for datetime calculus
+* Feature: 
+* Adding logging using logging library
+* make OOP
+* add funciton signature types
+* add enriched comments including parameter explanations
+
+### Interesting metrics:
+* Percentage breakdown of you-versus-other(s) message count per chat(group)
+* per chat between you and another (and aggregate up to overall), mean/median/skew on both message length and frequency
+** for all your 1-1 chats, plot 2D frequency and length of overall messages
+* your most actively messages sent during 24hrs
 
 
 ## Appendix
