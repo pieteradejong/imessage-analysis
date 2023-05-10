@@ -2,13 +2,12 @@ import sqlite3
 from sqlite3 import Error
 from util import bcolors
 import os 
+import queries
 
-def create_connection(db_file):
-	""" 
-	create a database connection
-	:param db_file: database file
-	:return: Connection object or None
-	"""
+DB_FILE_NAME = "chat.db"
+
+def create_connection(db_file: str) -> sqlite3.Connection:
+	"""Creates a database connection from file."""
 	conn = None
 	try:
 		conn = sqlite3.connect(db_file)
@@ -17,60 +16,62 @@ def create_connection(db_file):
 
 	return conn
 
-def get_table_names(conn):
-	"""
-	get all table names
-	:param conn: database connection
-	:return rows: query result
-	"""
+def get_table_names(conn: sqlite3.Connection) -> list:
+	"""Returns all table names in database."""
 	cur = conn.cursor()
 	query = "SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
 	cur.execute(query)
 
-	rows = cur.fetchall()
+	table_names = cur.fetchall()
 
-	return rows
+	return table_names
 
-def get_columns_for_table(conn, table_name):
+def get_db_objects_for_table(conn: sqlite3.Connection, table_name: str) -> list:
+	"""Returns all columns for a table."""
 	cur = conn.cursor()
-	cur = conn.execute("select * from " + table_name + ";")
-
-	return cur.description
-
-
-def get_messages(conn):
-	"""
-	get messages
-	:param conn: database connection
-	:return rows: query result
-	"""
-	cur = conn.cursor
-	query = "SELECT `text` FROM `message` ORDER BY `ROWID` DESC LIMIT 20;"
+	print(f"table_name: {table_name}")
+	query = f"SELECT `name` FROM `sqlite_master` WHERE `type`='column' AND `tbl_name`='{table_name}';"
 	cur.execute(query)
 
-	rows = cur.fetchall()
+	col_names = cur.fetchall()
 
-	return rows
+	return col_names
 
-def get_contacts_created_in_timeframe(conn, start, end):
-	pass
+def get_columns_for_table(conn: sqlite3.Connection, table_name: str) -> list:
+	cur = conn.cursor()
+	# TODO: add warning (and verify) that `pragma_table_info` and other pragma functions
+	# are only available in sqlite3 versions >=3.16.0
+	query = f"select name from pragma_table_info('{table_name}');"
+	cur = conn.execute(query)
+
+	return cur.fetchall()
+
+def get_table_creation_query(conn: sqlite3.Connection, table_name: str) -> list:
+	cur = conn.cursor()
+	query = f"select sql from sqlite_master where tbl_name = '{table_name}' and type='table';"
+	cur = conn.execute(query)
+
+	return cur.fetchall()
 
 def main():
 	conn = None
 	try:
 		dir_path = os.path.dirname(os.path.realpath(__file__))
-		db_file_name = "chat.db"
-		conn = sqlite3.connect(f"file:{dir_path}/{db_file_name}?mode=ro", uri=True)
+		conn = sqlite3.connect(f"file:{dir_path}/{DB_FILE_NAME}?mode=ro", uri=True)
 	except sqlite3.Error as err:
 		print(f"{bcolors.FAIL}sqlite3 Error: {err}{bcolors.ENDC}")
 
-	tables = get_table_names(conn)
-	for name in tables:
-		print("`" + name[0] + "`")
-		# cols = get_columns_for_table(conn, name[0])
-		# for c in cols:
-		# 	print("> " + c[0])
-
+	table_names = get_table_names(conn)
+	print(f"Table names:\n")
+	for tn in table_names:
+		print("\t`" + tn[0] + "`")
+		
+	print(f"All column names in `message` table:\n")
+	col_list = get_columns_for_table(conn, 'message')
+	print(col_list)
+	creation_query = get_table_creation_query(conn, 'attachment')
+	print(f"Creation query for attachments table:\n")
+	print(creation_query)
 	return conn
 
 if __name__ == '__main__':	
