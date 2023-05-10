@@ -29,7 +29,8 @@ Target audience: developers, who know how to "copy your iMessage chat database f
 * add __init__.py file to make project a package
 * Get date when db last-updated
 * TODO add "create" queries to new `.sql` file
-* 
+* Long term: allow exports of texts or analysis to pdf/spreadsheet
+  
 ## Milestone v0.1: Ability to read table names from `.db` file
 
 * Complete
