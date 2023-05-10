@@ -1,14 +1,25 @@
-ALL_TABLE_NAMES: str = f"""
-        "SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
-"""
 def table_names() -> str:
     return f"SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
+
+# TODO finish function
+def get_count_rows_for_table(table_name: str) -> int:
+    # query draft:
+    # select ( select count(*) from handle) as count_handle, ( select count(*) from message ) as count_message;
+    return f"SELECT count(*) FROM `{table_name}`;"
+
+# TODO verify function semantics
+def get_db_size(table_name: str) -> int:
+    return f"SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size();"
 
 def columns_for_table_q(table_name: str) -> str:
     return f"SELECT `name` FROM pragma_table_info('{table_name}');"
 
 def table_creation_query(table_name: str) -> str:
     return f"SELECT `sql` FROM sqlite_master WHERE `tbl_name`='{table_name}' and `type`='table';"
+
+# TODO fill in query
+def get_all_contacts() -> str:
+    return f";"
 
 # Query verified to work in SQLite DB Browser, unclear what precisely it does.
 ALL_YOUR_MESSAGES: str = f"""
