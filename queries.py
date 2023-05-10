@@ -1,15 +1,14 @@
 ALL_TABLE_NAMES: str = f"""
         "SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
 """
-
+def table_names() -> str:
+    return f"SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
 
 def columns_for_table_q(table_name: str) -> str:
     return f"SELECT `name` FROM pragma_table_info('{table_name}');"
 
 def table_creation_query(table_name: str) -> str:
     return f"SELECT `sql` FROM sqlite_master WHERE `tbl_name`='{table_name}' and `type`='table';"
-
-
 
 # Query verified to work in SQLite DB Browser, unclear what precisely it does.
 ALL_YOUR_MESSAGES: str = f"""

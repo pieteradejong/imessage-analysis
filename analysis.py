@@ -19,7 +19,7 @@ def create_connection(db_file: str) -> sqlite3.Connection:
 def get_table_names(conn: sqlite3.Connection) -> list:
 	"""Returns all table names in database."""
 	cur = conn.cursor()
-	query = "SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
+	query = queries.table_names()
 	cur.execute(query)
 
 	table_names = cur.fetchall()
