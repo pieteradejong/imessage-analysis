@@ -26,29 +26,18 @@ def get_table_names(conn: sqlite3.Connection) -> list:
 
 	return table_names
 
-def get_db_objects_for_table(conn: sqlite3.Connection, table_name: str) -> list:
-	"""Returns all columns for a table."""
-	cur = conn.cursor()
-	print(f"table_name: {table_name}")
-	query = f"SELECT `name` FROM `sqlite_master` WHERE `type`='column' AND `tbl_name`='{table_name}';"
-	cur.execute(query)
-
-	col_names = cur.fetchall()
-
-	return col_names
-
 def get_columns_for_table(conn: sqlite3.Connection, table_name: str) -> list:
 	cur = conn.cursor()
 	# TODO: add warning (and verify) that `pragma_table_info` and other pragma functions
 	# are only available in sqlite3 versions >=3.16.0
-	query = f"select name from pragma_table_info('{table_name}');"
+	query = queries.columns_for_table_q(table_name)
 	cur = conn.execute(query)
 
 	return cur.fetchall()
 
 def get_table_creation_query(conn: sqlite3.Connection, table_name: str) -> list:
 	cur = conn.cursor()
-	query = f"select sql from sqlite_master where tbl_name = '{table_name}' and type='table';"
+	query = queries.table_creation_query(table_name)
 	cur = conn.execute(query)
 
 	return cur.fetchall()
