@@ -2,7 +2,12 @@
 
 # Purpose and audience
 
-Enable programmatic analysis of iMessages which are commonly used on Apple devices.
+Enable programmatic analysis and visualization of iMessages which are commonly used on Apple devices. 
+Examples of use cases:
+* how many people have you corresponded with in the last month or year?
+* who is the quickest, or slowest, to text back?
+* who have you messaged with most during a particular time? 
+* have you lost touch with anyone?
 
 Target audience: any iMessage user, current or past. Project requires direct `read` access to the relevant database file, so currently requires minor technical skills.
 
