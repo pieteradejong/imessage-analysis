@@ -1,4 +1,4 @@
-# imessage-analysis
+# iMessage Analysis
 
 # Project prupose and audience
 
@@ -6,8 +6,10 @@ Purpose: enable programmatic analysis my own iMessages, since I find my iPhone a
 
 Target audience: developers, who know how to "copy your iMessage chat database file, likely `chat.db` into your project folder."
 
-## Requirements
+## Usage / Requirements
 
+* Expects database file to be in same directory as `analysis.py`
+* For this script to read your iMessages database file, it needs permission to do so. You can add the relevant application, e.g. Terminal, iTerm, or other, in System Preferences -> Security & Privacy -> Full Disk Access. Do so at your own risk.
 * iMessage data is loaded from the `[chat].db` file stored on your Mac. This may require your Messages app to be configured to sync with between iPhone and Mac. So you need **read-access** to `chat.db`. Write access is not required, and this package makes no changes to this file. Any changes only happen to copies of the file.
 
 ### Quick note on local Message files, on Mac
@@ -16,50 +18,32 @@ Target audience: developers, who know how to "copy your iMessage chat database f
 * `[HOME_FOLDER/]Library/Messages/chat.db-shm` - SQLite-specific file, irrelevant to analyis.
 * `[HOME_FOLDER/]Library/Messages/chat.db-wal` - "write-ahead log", relevant only operationally, irrelevant to analysis.
 
-
-## Usage
-
-* Expects database file to be in same directory as `analysis.py`
-* For this script to read your iMessages database file, it needs permission to do so. You can add the relevant application, e.g. Terminal, iTerm, or other, in System Preferences -> Security & Privacy -> Full Disk Access. Do so at your own risk.
-
-
 # Product roadmap
 
-## Uncateogorized todos/ideas
-* Add `Attachments` folder analysis
-* add __init__.py file to make project a package
-* Get date when db last-updated
-* TODO add "create" queries to new `.sql` file
-* Long term: allow exports of texts or analysis to pdf/spreadsheet
-* Database interaction optimizations:
-  * rewrite SQL queries to accomplish more within query
-  
-## Milestone v0.1: Ability to read table names from `.db` file
+## Milestone v0.1: Databse equivalent of Hello World
+* :white_check_mark: connect to `chat.db`
+* :white_check_mark: read table stats e.g. tables, rows, row counts
 
-* Complete
+## Uncategorized todos/ideas
+* add `Attachments` folder analysis
+* if possible, get date when overall db last-updated
+* rewrite SQL queries to accomplish more within query
+* (medium priority) use `logging`
+* (low priority) allow exports of texts or analysis to `.pdf`/spreadsheet
+## Project Organization
+* :white_check_mark: Separate file for SQL queries
+* :todo: add "create" queries to new `.sql` file
+## Project Design
+* OOP versus functions
+* Typing: consistent type annotations. Where do annotations make sense and where not.
+* Add __init__.py file to make project a package?
+## Documentation
+* Add docstrings for each function? Which convention to follow. Potentially autogenerate docs.
 
-## Current
+### User Interface / Visualization
+## Milestone v1.0: Self-hosted web app for personal use
+## Milestone: vPublic, productize for public use
 
-
-## Milestone v0.X: Add UI with visualization
-
-## Milestone v1.0: Self-hosted web app for regular use
-
-
-
-
-
-
-
-
-## Project TODO's
-* Separate file for SQL queries
-* Function for datetime calculus
-* Feature: 
-* Adding logging using logging library
-* make OOP
-* add funciton signature types
-* add enriched comments including parameter explanations
 
 ### Interesting metrics:
 * Percentage breakdown of you-versus-other(s) message count per chat(group)
