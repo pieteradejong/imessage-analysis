@@ -45,68 +45,7 @@ Target audience: developers, who know how to "copy your iMessage chat database f
 
 ## Milestone v1.0: Self-hosted web app for regular use
 
-# Database structure
 
-## Tables
-`deleted_messages`
-
-* table description
-
-`sqlite_sequence`
-
-* table description
-
-`chat_handle_join`
-
-* table description
-
-`sync_deleted_messages`
-
-* table description
-
-`message_processing_task`
-
-* table description
-
-`handle`
-
-* table description
-
-`sync_deleted_chats`
-
-* table description
-
-`message_attachment_join`
-
-* table description
-
-`sync_deleted_attachments`
-
-* table description
-
-`kvtable`
-
-* table description
-
-`chat_message_join`
-
-* table description
-
-`message`
-
-* Arguably the most important table along with `handle` ("contacts" i.e. people). Contains the body of any message sent or received. 
-
-`chat`
-
-* table description
-
-`attachment`
-
-* table description
-
-`sqlite_stat1`
-
-* table description
 
 
 
@@ -140,8 +79,4 @@ https://linuxsleuthing.blogspot.com/2015/01/getting-attached-apple-messaging.htm
 * Description of figuring out Message attachments. And the inspiration to add full `CREATE TABLE` `.sql` file to the repo(a TODO as of this writing).
 https://github.com/dsouzarc/iMessageAnalyzer
 * Existing but older analysis app for Mac. Used for feature and visualization ideas.
-
-
-## Appendix - Brief description of all tables
-(For schema details, see `.sql` file on in project root directory.)
 
