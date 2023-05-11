@@ -1,16 +1,15 @@
 # iMessage Analysis
 
-# Project prupose and audience
+# Purpose and audience
 
-Purpose: enable programmatic analysis my own iMessages, since I find my iPhone and Mac iMessage apps lacking in that area.
+Enable programmatic analysis of iMessages which are commonly used on Apple devices.
 
-Target audience: developers, who know how to "copy your iMessage chat database file, likely `chat.db` into your project folder."
+Target audience: any iMessage user, current or past. Project requires direct `read` access to the relevant database file, so currently requires minor technical skills.
 
 ## Usage / Requirements
 
-* Expects database file to be in same directory as `analysis.py`
-* For this script to read your iMessages database file, it needs permission to do so. You can add the relevant application, e.g. Terminal, iTerm, or other, in System Preferences -> Security & Privacy -> Full Disk Access. Do so at your own risk.
-* iMessage data is loaded from the `[chat].db` file stored on your Mac. This may require your Messages app to be configured to sync with between iPhone and Mac. So you need **read-access** to `chat.db`. Write access is not required, and this package makes no changes to this file. Any changes only happen to copies of the file.
+* All relevant iMessage personal data is stored in `chat.db`. The project requires `read` access to this file, and for now, it must be in the same directory as `analysis.py`. For now, this must be done manually.
+* Further, for this file to contain up-to-date data, you must have sync enabled between your iPhone and your Mac laptop/computer.
 
 ### Quick note on local Message files, on Mac
 * `[HOME_FOLDER/]Library/Messages/chat.db` - actual chat data.
@@ -23,8 +22,8 @@ Target audience: developers, who know how to "copy your iMessage chat database f
 ## Milestone v0.1: Databse equivalent of Hello World
 * :white_check_mark: connect to `chat.db`
 * :white_check_mark: read table stats e.g. tables, rows, row counts
-* :chart_with_upwards_trend: read 10 latest messages
-* :ballot_box_with_check: if possible, get date when overall db last-updated
+* :clock8: read 10 latest messages
+* &#9744; if possible, get date when overall db last-updated
 
 ## Uncategorized todos/ideas
 * add `Attachments` folder analysis
@@ -32,13 +31,17 @@ Target audience: developers, who know how to "copy your iMessage chat database f
 * rewrite SQL queries to accomplish more within query
 * (medium priority) use `logging`
 * (low priority) allow exports of texts or analysis to `.pdf`/spreadsheet
+
 ## Project Organization
 * :white_check_mark: Separate file for SQL queries
-* :todo: add "create" queries to new `.sql` file
+* :pencil: add "`TABLE CREATE`" queries for each table to new `.sql` file
+* :pencil: make `chat.db` file location configurable (`config.py`)
+
 ## Project Design
-* OOP versus functions
+* OOP versus functions. Which is suited where.
 * Typing: consistent type annotations. Where do annotations make sense and where not.
 * Add __init__.py file to make project a package?
+  
 ## Documentation
 * Add docstrings for each function? Which convention to follow. Potentially autogenerate docs.
 
