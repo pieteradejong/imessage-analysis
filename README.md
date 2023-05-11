@@ -23,6 +23,8 @@ Target audience: developers, who know how to "copy your iMessage chat database f
 ## Milestone v0.1: Databse equivalent of Hello World
 * :white_check_mark: connect to `chat.db`
 * :white_check_mark: read table stats e.g. tables, rows, row counts
+* :chart_with_upwards_trend: read 10 latest messages
+* :ballot_box_with_check: if possible, get date when overall db last-updated
 
 ## Uncategorized todos/ideas
 * add `Attachments` folder analysis
@@ -51,7 +53,6 @@ Target audience: developers, who know how to "copy your iMessage chat database f
 ** for all your 1-1 chats, plot 2D frequency and length of overall messages
 * your most actively messages sent during 24hrs
 
-
 ## Appendix - Useful resources and links
 
 I used the following for inspiration:
@@ -63,4 +64,3 @@ https://linuxsleuthing.blogspot.com/2015/01/getting-attached-apple-messaging.htm
 * Description of figuring out Message attachments. And the inspiration to add full `CREATE TABLE` `.sql` file to the repo(a TODO as of this writing).
 https://github.com/dsouzarc/iMessageAnalyzer
 * Existing but older analysis app for Mac. Used for feature and visualization ideas.
-
