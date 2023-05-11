@@ -2,10 +2,16 @@ def table_names() -> str:
     return f"SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
 
 # TODO finish function
-def get_count_rows_for_table(table_name: str) -> int:
+def count_rows_for_table(table_names: list[str]) -> list[(str, int)]:
     # query draft:
-    # select ( select count(*) from handle) as count_handle, ( select count(*) from message ) as count_message;
-    return f"SELECT count(*) FROM `{table_name}`;"
+    # select ( select count(*) from handle)
+    #        ( select count(*) from message)
+    #        ( select count(*) from ...etc...);
+    query: str = f"SELECT "
+    for tn in table_names[:-1]:
+        query += f"(SELECT count(*) FROM {tn}), "
+    query += f"(SELECT count(*) FROM {table_names[-1]});"
+    return query
 
 # TODO verify function semantics
 def get_db_size(table_name: str) -> int:
