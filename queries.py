@@ -2,7 +2,7 @@ def table_names() -> str:
     return f"SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
 
 # TODO finish function
-def count_rows_for_table(table_names: list[str]) -> list[(str, int)]:
+def rows_count(table_names: list) -> str:
     # query draft:
     # select ( select count(*) from handle)
     #        ( select count(*) from message)
