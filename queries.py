@@ -1,3 +1,20 @@
+import re
+
+_SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _require_sqlite_identifier(value: str, *, field_name: str) -> str:
+    """
+    Validate an identifier (e.g. table name) to prevent SQL injection.
+
+    SQLite does not support binding identifiers as parameters, so we must validate
+    before safely interpolating into SQL.
+    """
+    if not _SQLITE_IDENTIFIER_RE.fullmatch(value):
+        raise ValueError(f"Invalid {field_name}: {value!r}")
+    return value
+
+
 def table_names() -> str:
     return f"SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
 
@@ -8,10 +25,14 @@ def rows_count(table_names: list) -> str:
     # select ( select count(*) from handle)
     #        ( select count(*) from message)
     #        ( select count(*) from ...etc...);
+    if not table_names:
+        return "SELECT 0;"
     query: str = f"SELECT "
     for tn in table_names[:-1]:
-        query += f"(SELECT count(*) FROM {tn}), "
-    query += f"(SELECT count(*) FROM {table_names[-1]});"
+        safe_tn = _require_sqlite_identifier(tn, field_name="table_name")
+        query += f"(SELECT count(*) FROM `{safe_tn}`), "
+    safe_last = _require_sqlite_identifier(table_names[-1], field_name="table_name")
+    query += f"(SELECT count(*) FROM `{safe_last}`);"
     return query
 
 
@@ -21,11 +42,13 @@ def get_db_size(table_name: str) -> int:
 
 
 def columns_for_table_q(table_name: str) -> str:
-    return f"SELECT `name` FROM pragma_table_info('{table_name}');"
+    safe_table = _require_sqlite_identifier(table_name, field_name="table_name")
+    return f"SELECT `name` FROM pragma_table_info('{safe_table}');"
 
 
 def table_creation_query(table_name: str) -> str:
-    return f"SELECT `sql` FROM sqlite_master WHERE `tbl_name`='{table_name}' and `type`='table';"
+    # Use parameterized query for table_name (SQLite supports this for WHERE clauses)
+    return "SELECT `sql` FROM sqlite_master WHERE `tbl_name`=? AND `type`='table';"
 
 
 # TODO fill in query

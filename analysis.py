@@ -62,7 +62,8 @@ def get_row_counts_by_table(conn: sqlite3.Connection, table_names: list) -> list
 def get_table_creation_query(conn: sqlite3.Connection, table_name: str) -> list:
     cur = conn.cursor()
     query = queries.table_creation_query(table_name)
-    cur = conn.execute(query)
+    # table_creation_query now returns a parameterized query
+    cur.execute(query, (table_name,))
 
     return cur.fetchall()
 
