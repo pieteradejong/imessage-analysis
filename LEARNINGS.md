@@ -425,6 +425,110 @@ wait $BACKEND_PID $FRONTEND_PID
 - Use `wait` to keep script running until processes exit
 - Handle errors gracefully (`|| true` to avoid script failure)
 
+## Bash Scripting Best Practices
+
+### Readable ANSI Color Codes
+
+When using colors in bash scripts, choose colors that are readable on both light and dark terminal backgrounds. Here's a recommended color palette:
+
+**Basic Colors:**
+```bash
+# Standard colors (readable on most terminals)
+RED='\033[0;31m'        # Red for errors
+GREEN='\033[0;32m'      # Green for success
+YELLOW='\033[1;33m'     # Bright yellow for warnings
+CYAN='\033[0;36m'       # Cyan for headers/info (more readable than blue)
+NC='\033[0m'            # No Color (reset)
+```
+
+**Why Cyan Instead of Blue:**
+- **Blue (`\033[0;34m`)** - Dark blue can be hard to read on dark terminal backgrounds
+- **Cyan (`\033[0;36m`)** - More visible and readable on both light and dark backgrounds
+- **Bright Cyan (`\033[1;36m`)** - Even more visible, but can be too bright for some terminals
+
+**Extended Color Palette:**
+```bash
+# Additional useful colors
+BLUE='\033[0;34m'       # Standard blue (use sparingly)
+MAGENTA='\033[0;35m'    # Magenta/purple
+WHITE='\033[1;37m'      # Bright white
+GRAY='\033[0;90m'       # Gray for secondary text
+
+# Bright variants (more visible)
+BRIGHT_RED='\033[1;31m'
+BRIGHT_GREEN='\033[1;32m'
+BRIGHT_CYAN='\033[1;36m'
+```
+
+**Usage Pattern:**
+```bash
+#!/usr/bin/env bash
+
+# Define colors at the top
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+# Helper functions
+print_success() {
+  echo -e "${GREEN}✓${NC} $1"
+}
+
+print_error() {
+  echo -e "${RED}✗${NC} $1"
+}
+
+print_warning() {
+  echo -e "${YELLOW}⚠${NC} $1"
+}
+
+print_header() {
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo -e "${CYAN}$1${NC}"
+  echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+}
+
+# Usage
+print_header "Running Tests"
+print_success "Test passed"
+print_error "Test failed"
+print_warning "This is a warning"
+```
+
+**Color Code Format:**
+- `\033[0;XXm` - Standard intensity (normal)
+- `\033[1;XXm` - Bright/bold intensity
+- `\033[0m` - Reset to default color
+
+**ANSI Color Codes:**
+- `30` - Black
+- `31` - Red
+- `32` - Green
+- `33` - Yellow
+- `34` - Blue
+- `35` - Magenta
+- `36` - Cyan
+- `37` - White
+
+**Best Practices:**
+1. **Use cyan for headers** - More readable than blue on dark backgrounds
+2. **Use green for success** - Universally recognized as positive
+3. **Use red for errors** - Universally recognized as negative
+4. **Use yellow for warnings** - Draws attention without being alarming
+5. **Always reset colors** - Use `${NC}` after colored text
+6. **Test on different terminals** - Colors may render differently
+7. **Provide fallback** - Scripts should work even if colors aren't supported
+
+**Testing Color Readability:**
+```bash
+# Test all colors
+for color in RED GREEN YELLOW CYAN BLUE MAGENTA; do
+  echo -e "${!color}This is $color${NC}"
+done
+```
+
 ## Process Management
 
 ### Graceful Shutdown
