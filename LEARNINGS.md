@@ -499,7 +499,18 @@ Always access `chat.db` in read-only mode:
 - Read-only mode allows reading even when locked
 - Never modify the original database
 
-## Testing Strategy
+## Comprehensive Testing Strategy
+
+### Multi-Layered Testing Approach
+
+A comprehensive test suite should check multiple aspects of code quality, not just unit tests:
+
+1. **Code Formatting** - Ensure consistent style (black)
+2. **Type Safety** - Catch type errors before runtime (mypy)
+3. **Importability** - Verify all modules can be imported
+4. **Security** - Scan for vulnerabilities (bandit)
+5. **Unit Tests** - Test functionality with coverage (pytest)
+6. **Coverage Analysis** - Identify untested code paths
 
 ### Test Structure
 
@@ -517,10 +528,180 @@ tests/
 3. **Unit Tests** - Test individual functions in isolation
 4. **Integration Tests** - Test with real database (if available)
 
+### Comprehensive Test Script
+
+Create a single `test.sh` script that runs all quality checks:
+
+**Key Features:**
+- **Colored output** - Use ANSI colors for better readability (✓/✗ indicators)
+- **Progress tracking** - Count tests run vs passed
+- **Section headers** - Clear visual separation of test categories
+- **Error aggregation** - Track failures across all categories
+- **Actionable feedback** - Provide next steps when tests fail
+
+**Example structure:**
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Colors for output
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+print_success() {
+  echo -e "${GREEN}✓${NC} $1"
+}
+
+print_error() {
+  echo -e "${RED}✗${NC} $1"
+}
+
+# Run each test category
+# 1. Code formatting
+# 2. Type checking
+# 3. Import checks
+# 4. Security scanning
+# 5. Unit tests with coverage
+# 6. Final summary
+```
+
+### Test Coverage Reporting
+
+**Configure pytest for coverage in `pyproject.toml`:**
+
+```toml
+[tool.pytest.ini_options]
+addopts = [
+    "-v",                              # Verbose output
+    "--cov=imessage_analysis",         # Coverage target
+    "--cov-report=term-missing",       # Show missing lines in terminal
+    "--cov-report=html:htmlcov",       # Generate HTML report
+    "--cov-fail-under=30",             # Fail if coverage < 30%
+]
+```
+
+**Benefits:**
+- **Terminal output** - See coverage summary immediately
+- **HTML report** - Detailed line-by-line coverage in `htmlcov/index.html`
+- **Coverage threshold** - Enforce minimum coverage percentage
+- **Missing lines** - See exactly which lines aren't tested
+
+### Security Scanning with Bandit
+
+**Add bandit to dev dependencies:**
+```toml
+[project.optional-dependencies]
+dev = [
+    "bandit>=1.7.0",
+    # ... other dev deps
+]
+```
+
+**Run security scans:**
+```bash
+# Basic scan
+bandit -r imessage_analysis
+
+# JSON output for CI
+bandit -r imessage_analysis -f json -o bandit_report.json
+
+# Low/medium severity only
+bandit -r imessage_analysis -ll
+```
+
+**What it catches:**
+- SQL injection vulnerabilities
+- Hardcoded passwords/secrets
+- Insecure random number generation
+- Shell injection risks
+- Use of dangerous functions
+
+### Pytest Configuration Best Practices
+
+**Test Markers:**
+```toml
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+```
+
+**Usage:**
+```bash
+# Run only fast tests
+pytest -m "not slow"
+
+# Run only unit tests
+pytest -m unit
+
+# Run only integration tests
+pytest -m integration
+```
+
+**Test Discovery:**
+```toml
+testpaths = ["tests"]              # Where to find tests
+python_files = ["test_*.py"]       # Test file pattern
+python_classes = ["Test*"]         # Test class pattern
+python_functions = ["test_*"]       # Test function pattern
+```
+
+### Import Testing
+
+**Verify all modules can be imported:**
+```bash
+for module in imessage_analysis imessage_analysis.config \
+              imessage_analysis.database; do
+  python -c "import $module" || echo "Failed: $module"
+done
+```
+
+**Why it matters:**
+- Catches import errors early
+- Verifies package structure
+- Ensures dependencies are available
+- Prevents runtime import failures
+
+### Test Output and User Experience
+
+**Make test output informative:**
+
+1. **Use colors** - Green for success, red for failure
+2. **Show progress** - "Tests Run: X, Passed: Y, Failed: Z"
+3. **Section headers** - Clear visual separation
+4. **Actionable errors** - Tell users how to fix issues
+5. **Summary at end** - Quick overview of all results
+
+**Example:**
+```bash
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧪 Running Comprehensive Test Suite
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1️⃣  Code Formatting (black)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Code formatting is correct
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 Final Test Summary
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Tests Run:    7
+Tests Passed: 7
+Tests Failed: 0
+
+✅ All tests passed!
+```
+
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run comprehensive test suite
+./test.sh
+
+# Run only pytest
 pytest
 
 # Run with coverage
@@ -528,6 +709,43 @@ pytest --cov=imessage_analysis
 
 # Run specific test file
 pytest tests/test_queries.py
+
+# Run with markers
+pytest -m unit
+pytest -m "not slow"
+```
+
+### Coverage Thresholds
+
+**Set minimum coverage requirements:**
+- Start with a low threshold (e.g., 30%) to establish baseline
+- Gradually increase as you add tests
+- Use `--cov-fail-under=X` to enforce in CI
+
+**Coverage goals:**
+- **30-50%** - Basic coverage, all critical paths tested
+- **50-70%** - Good coverage, most functionality tested
+- **70-90%** - Excellent coverage, edge cases included
+- **90%+** - Comprehensive coverage, all code paths tested
+
+### Test Organization
+
+**Group related tests:**
+- One test file per module (e.g., `test_queries.py` for `queries.py`)
+- Use descriptive test names: `test_get_latest_messages_includes_limit`
+- Test both success and failure cases
+- Use fixtures for common setup
+
+**Example:**
+```python
+def test_get_latest_messages_includes_limit():
+    q, params = get_latest_messages(limit=12)
+    assert "LIMIT ?" in q
+    assert params == (12,)
+
+def test_get_latest_messages_default_limit():
+    q, params = get_latest_messages()
+    assert params == (10,)  # Default limit
 ```
 
 ## Key Takeaways
@@ -542,3 +760,8 @@ pytest tests/test_queries.py
 8. **Keep API layer thin** - delegate to business logic
 9. **Use shell scripts** for common development tasks
 10. **Handle process cleanup** with trap handlers
+11. **Test comprehensively** - format, types, security, coverage, imports
+12. **Use colored output** in test scripts for better UX
+13. **Set coverage thresholds** to enforce minimum test coverage
+14. **Scan for security issues** with bandit in addition to code review
+15. **Organize tests by module** - one test file per source module
