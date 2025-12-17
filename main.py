@@ -71,7 +71,7 @@ def main(argv: Optional[List[str]] = None):
 
     # Get configuration
     config = get_config(db_path=args.db_path)
-    
+
     if not config.validate():
         print(f"{Colors.FAIL}Error: Database file not found or not readable.{Colors.ENDC}")
         print(f"Please ensure chat.db exists in the current directory or at:")
@@ -84,12 +84,10 @@ def main(argv: Optional[List[str]] = None):
             Path(args.snapshot_dir),
         )
         config = get_config(db_path=str(result.snapshot_path))
-        print(
-            f"{Colors.OKGREEN}Snapshot created: {result.snapshot_path}{Colors.ENDC}"
-        )
-    
+        print(f"{Colors.OKGREEN}Snapshot created: {result.snapshot_path}{Colors.ENDC}")
+
     print(f"{Colors.OKGREEN}Using database: {config.db_path_str}{Colors.ENDC}")
-    
+
     try:
         with DatabaseConnection(config, use_memory=args.use_memory) as db:
             # Database Summary
@@ -98,48 +96,48 @@ def main(argv: Optional[List[str]] = None):
             print(f"Total tables: {summary['table_count']}")
             print(f"Total messages: {summary['total_messages']:,}")
             print(f"Total chats: {summary['total_chats']:,}")
-            
+
             # Table names and row counts
             print_section("Table Information")
             table_names = db.get_table_names()
             row_counts = db.get_row_counts_by_table(table_names)
-            
+
             print(f"\n{Colors.BOLD}Table names:{Colors.ENDC}")
             for table_name in table_names:
                 print(f"  - {table_name}")
-            
+
             print(f"\n{Colors.BOLD}Row counts by table:{Colors.ENDC}")
             for table_name, count in row_counts:
                 print(f"  {table_name:30s}: {count:>10,}")
-            
+
             # Latest messages
             print_section(f"Latest Messages ({args.latest_limit})")
             latest_messages = get_latest_messages_data(db, limit=args.latest_limit)
             for i, msg in enumerate(latest_messages, 1):
-                direction = "You" if msg['is_from_me'] else "Them"
+                direction = "You" if msg["is_from_me"] else "Them"
                 print(f"{i:2d}. [{msg['date']}] {direction}: {msg['text'][:60]}...")
-            
+
             # Message statistics by chat
             print_section("Top Chats by Message Count")
             chat_stats = get_message_statistics_by_chat(db)
             for i, stat in enumerate(chat_stats[:10], 1):
-                print(f"{i:2d}. {stat['chat_identifier']:30s}: {stat['message_count']:>6,} messages")
-            
+                print(
+                    f"{i:2d}. {stat['chat_identifier']:30s}: {stat['message_count']:>6,} messages"
+                )
+
             # Column information for message table
             print_section("Message Table Columns")
-            columns = db.get_columns_for_table('message')
+            columns = db.get_columns_for_table("message")
             print(f"Total columns: {len(columns)}")
             print(f"\nFirst 10 columns:")
             for col in columns[:10]:
                 print(f"  - {col[1]} ({col[2]})")
-            
+
     except Exception as e:
         print(f"{Colors.FAIL}Error: {e}{Colors.ENDC}")
         logging.exception("Error during execution")
         sys.exit(1)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
-
-

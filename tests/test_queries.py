@@ -10,4 +10,3 @@ def test_get_latest_messages_includes_limit():
 def test_get_total_messages_by_chat_has_group_by():
     q = get_total_messages_by_chat()
     assert "GROUP BY" in q
-

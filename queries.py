@@ -1,6 +1,7 @@
 def table_names() -> str:
     return f"SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
 
+
 # TODO finish function
 def rows_count(table_names: list) -> str:
     # query draft:
@@ -13,19 +14,24 @@ def rows_count(table_names: list) -> str:
     query += f"(SELECT count(*) FROM {table_names[-1]});"
     return query
 
+
 # TODO verify function semantics
 def get_db_size(table_name: str) -> int:
     return f"SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size();"
 
+
 def columns_for_table_q(table_name: str) -> str:
     return f"SELECT `name` FROM pragma_table_info('{table_name}');"
+
 
 def table_creation_query(table_name: str) -> str:
     return f"SELECT `sql` FROM sqlite_master WHERE `tbl_name`='{table_name}' and `type`='table';"
 
+
 # TODO fill in query
 def get_all_contacts() -> str:
     return f";"
+
 
 # Query verified to work in SQLite DB Browser, unclear what precisely it does.
 ALL_YOUR_MESSAGES: str = f"""

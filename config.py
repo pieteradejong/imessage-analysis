@@ -3,6 +3,7 @@ Configuration module for iMessage Analysis project.
 
 Handles configuration settings including database file paths.
 """
+
 import os
 from pathlib import Path
 from typing import Optional
@@ -10,17 +11,17 @@ from typing import Optional
 
 class Config:
     """Configuration class for iMessage Analysis."""
-    
+
     # Default database file name
     DEFAULT_DB_NAME = "chat.db"
-    
+
     # Default path to Messages directory on macOS
     DEFAULT_MESSAGES_PATH = Path.home() / "Library" / "Messages"
-    
+
     def __init__(self, db_path: Optional[str] = None):
         """
         Initialize configuration.
-        
+
         Args:
             db_path: Optional path to chat.db file. If not provided, will look
                     in current directory, then in default Messages directory.
@@ -36,21 +37,21 @@ class Config:
             # Then try default Messages directory
             elif (self.DEFAULT_MESSAGES_PATH / self.DEFAULT_DB_NAME).exists():
                 self._db_path = self.DEFAULT_MESSAGES_PATH / self.DEFAULT_DB_NAME
-    
+
     @property
     def db_path(self) -> Optional[Path]:
         """Get the database file path."""
         return self._db_path
-    
+
     @property
     def db_path_str(self) -> Optional[str]:
         """Get the database file path as a string."""
         return str(self._db_path) if self._db_path else None
-    
+
     def validate(self) -> bool:
         """
         Validate that the database file exists and is readable.
-        
+
         Returns:
             True if database file exists and is readable, False otherwise.
         """
@@ -66,10 +67,10 @@ _config: Optional[Config] = None
 def get_config(db_path: Optional[str] = None) -> Config:
     """
     Get or create the global configuration instance.
-    
+
     Args:
         db_path: Optional path to chat.db file.
-        
+
     Returns:
         Config instance.
     """
@@ -82,11 +83,9 @@ def get_config(db_path: Optional[str] = None) -> Config:
 def set_config(config: Config) -> None:
     """
     Set the global configuration instance.
-    
+
     Args:
         config: Config instance to use.
     """
     global _config
     _config = config
-
-

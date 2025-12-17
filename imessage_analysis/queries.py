@@ -3,6 +3,7 @@ SQL query definitions for iMessage analysis.
 
 Contains reusable SQL query strings for common operations.
 """
+
 import re
 from typing import Any, List, Tuple
 
@@ -30,16 +31,16 @@ def _require_sqlite_identifier(value: str, *, field_name: str) -> str:
 def rows_count(table_names: List[str]) -> str:
     """
     Generate query to get row counts for multiple tables.
-    
+
     Args:
         table_names: List of table names.
-        
+
     Returns:
         SQL query string.
     """
     if not table_names:
         return "SELECT 0;"
-    
+
     query = "SELECT "
     for tn in table_names[:-1]:
         safe_tn = _require_sqlite_identifier(tn, field_name="table_name")
@@ -52,10 +53,10 @@ def rows_count(table_names: List[str]) -> str:
 def columns_for_table(table_name: str) -> str:
     """
     Get query to retrieve column information for a table.
-    
+
     Args:
         table_name: Name of the table.
-        
+
     Returns:
         SQL query string.
     """
@@ -66,10 +67,10 @@ def columns_for_table(table_name: str) -> str:
 def table_creation_query(table_name: str) -> str:
     """
     Get query to retrieve CREATE TABLE statement for a table.
-    
+
     Args:
         table_name: Name of the table.
-        
+
     Returns:
         SQL query string.
     """
@@ -79,7 +80,7 @@ def table_creation_query(table_name: str) -> str:
 def get_all_contacts() -> str:
     """
     Get query to retrieve all contacts (handles).
-    
+
     Returns:
         SQL query string.
     """
@@ -99,10 +100,10 @@ def get_all_contacts() -> str:
 def get_latest_messages(limit: int = 10) -> Tuple[str, Tuple[Any, ...]]:
     """
     Get query to retrieve the latest messages.
-    
+
     Args:
         limit: Number of messages to retrieve.
-        
+
     Returns:
         (SQL query string, parameters tuple).
     """
@@ -127,7 +128,7 @@ def get_latest_messages(limit: int = 10) -> Tuple[str, Tuple[Any, ...]]:
 def get_all_messages() -> str:
     """
     Get query to retrieve all messages.
-    
+
     Returns:
         SQL query string.
     """
@@ -148,10 +149,10 @@ def get_all_messages() -> str:
 def get_messages_fuzzy_match(search_term: str) -> Tuple[str, Tuple[Any, ...]]:
     """
     Get query to search messages by text content (fuzzy match).
-    
+
     Args:
         search_term: Text to search for (will be used with LIKE).
-        
+
     Returns:
         (SQL query string, parameters tuple).
     """
@@ -175,7 +176,7 @@ def get_messages_fuzzy_match(search_term: str) -> Tuple[str, Tuple[Any, ...]]:
 def get_total_messages_by_chat() -> str:
     """
     Get query to count total messages per chat.
-    
+
     Returns:
         SQL query string.
     """
@@ -195,10 +196,10 @@ def get_total_messages_by_chat() -> str:
 def get_chars_and_length_by_counterpart(chat_identifier: str) -> Tuple[str, Tuple[Any, ...]]:
     """
     Get query to analyze message count and character count by counterpart.
-    
+
     Args:
         chat_identifier: Chat identifier to filter by.
-        
+
     Returns:
         (SQL query string, parameters tuple).
     """
@@ -217,5 +218,3 @@ def get_chars_and_length_by_counterpart(chat_identifier: str) -> Tuple[str, Tupl
         GROUP BY message.is_from_me;
     """
     return query, (chat_identifier,)
-
-

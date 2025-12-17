@@ -71,4 +71,3 @@ def create_timestamped_snapshot(
         snapshot_path=snapshot_path,
         created_at=created_at,
     )
-

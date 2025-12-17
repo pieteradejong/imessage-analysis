@@ -1,6 +1,7 @@
 """
 Setup configuration for iMessage Analysis package.
 """
+
 from setuptools import setup, find_packages
 from pathlib import Path
 
@@ -43,5 +44,3 @@ setup(
         "Programming Language :: Python :: 3.12",
     ],
 )
-
-
