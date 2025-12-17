@@ -12,11 +12,13 @@ export type LatestMessage = {
   text: string | null;
   is_from_me: boolean;
   chat_identifier: string | null;
+  display_name: string | null;
   handle_id: string | null;
 };
 
 export type TopChat = {
   chat_identifier: string;
+  display_name: string | null;
   message_count: number;
 };
 

@@ -144,8 +144,15 @@ export function App() {
                 <tbody>
                   {topChats.map((c) => (
                     <tr key={c.chat_identifier} style={{ borderTop: "1px solid #eee" }}>
-                      <td style={{ padding: "10px 12px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12 }}>
-                        {c.chat_identifier}
+                      <td style={{ padding: "10px 12px" }}>
+                        <div style={{ fontWeight: c.display_name ? 600 : 400 }}>
+                          {c.display_name || c.chat_identifier}
+                        </div>
+                        {c.display_name && (
+                          <div style={{ opacity: 0.6, fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", marginTop: 2 }}>
+                            {c.chat_identifier}
+                          </div>
+                        )}
                       </td>
                       <td style={{ padding: "10px 12px", textAlign: "right" }}>{formatNumber(c.message_count)}</td>
                     </tr>
@@ -182,13 +189,22 @@ export function App() {
               {latest.map((m, idx) => (
                 <div key={`${m.date}-${idx}`} style={{ border: "1px solid #ddd", borderRadius: 10, padding: 12 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-                    <div style={{ fontWeight: 700 }}>{m.is_from_me ? "You" : "Them"}</div>
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{m.is_from_me ? "You" : m.display_name || "Them"}</div>
+                      {!m.is_from_me && m.display_name && (
+                        <div style={{ opacity: 0.6, fontSize: 11, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", marginTop: 2 }}>
+                          {m.chat_identifier}
+                        </div>
+                      )}
+                    </div>
                     <div style={{ opacity: 0.7, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12 }}>{m.date}</div>
                   </div>
                   <div style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>{m.text ?? ""}</div>
-                  <div style={{ marginTop: 8, opacity: 0.7, fontSize: 12 }}>
-                    Chat: <code>{m.chat_identifier ?? ""}</code>
-                  </div>
+                  {!m.display_name && (
+                    <div style={{ marginTop: 8, opacity: 0.7, fontSize: 12 }}>
+                      Chat: <code>{m.chat_identifier ?? ""}</code>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

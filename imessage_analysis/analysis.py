@@ -28,7 +28,7 @@ def get_latest_messages_data(db: DatabaseConnection, limit: int = 10) -> List[Di
         limit: Number of messages to retrieve.
 
     Returns:
-        List of message dictionaries with keys: date, text, is_from_me, chat_identifier, handle_id.
+        List of message dictionaries with keys: date, text, is_from_me, chat_identifier, display_name, handle_id.
     """
     query, params = get_latest_messages(limit)
     rows = db.execute_query(query, params)
@@ -41,7 +41,8 @@ def get_latest_messages_data(db: DatabaseConnection, limit: int = 10) -> List[Di
                 "text": row[1],
                 "is_from_me": bool(row[2]),
                 "chat_identifier": row[3],
-                "handle_id": row[4],
+                "display_name": row[4],
+                "handle_id": row[5],
             }
         )
 
@@ -67,7 +68,8 @@ def get_message_statistics_by_chat(db: DatabaseConnection) -> List[Dict[str, Any
         stats.append(
             {
                 "chat_identifier": row[0],
-                "message_count": row[1],
+                "display_name": row[1],
+                "message_count": row[2],
             }
         )
 

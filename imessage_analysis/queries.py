@@ -113,6 +113,7 @@ def get_latest_messages(limit: int = 10) -> Tuple[str, Tuple[Any, ...]]:
             message.text,
             message.is_from_me,
             chat.chat_identifier,
+            chat.display_name,
             handle.id AS handle_id
         FROM
             chat
@@ -183,12 +184,13 @@ def get_total_messages_by_chat() -> str:
     return """
         SELECT
             chat.chat_identifier,
+            chat.display_name,
             COUNT(chat.chat_identifier) AS message_count
         FROM
             chat
         JOIN chat_message_join ON chat.ROWID = chat_message_join.chat_id
         JOIN message ON chat_message_join.message_id = message.ROWID
-        GROUP BY chat.chat_identifier
+        GROUP BY chat.chat_identifier, chat.display_name
         ORDER BY message_count DESC;
     """
 
