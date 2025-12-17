@@ -1,0 +1,10 @@
+# Core dependencies
+plotly>=5.0.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# Optional but recommended
+# pandas>=1.5.0  # For data analysis
+# numpy>=1.23.0  # For numerical operations
+
+

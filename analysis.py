@@ -60,9 +60,6 @@ def get_table_creation_query(conn: sqlite3.Connection, table_name: str) -> list:
 
 	return cur.fetchall()
 
-# TODO
-def get_disk_size(conn: sqlite3.Connection) -> list:
-	pass
 
 # (END) Database metadata functions
 
@@ -107,6 +104,7 @@ def main():
 	# Table names
 	table_names: list[tuple] = get_table_names(conn)
 	table_names: list[str] = list(map(lambda x: x[0], table_names))
+	print("Table names:\n")
 	print(*table_names, sep="\n")
 
 	# Row counts by table

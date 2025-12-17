@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "imessage-analysis"
+version = "0.1.0"
+description = "A tool for analyzing iMessage data from macOS chat.db"
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [
+    {name = "Pieter de Jong"}
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "plotly>=5.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=22.0.0",
+    "mypy>=0.991",
+]
+
+[project.scripts]
+imessage-analysis = "main:main"
+
+[tool.black]
+line-length = 100
+target-version = ['py312']
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+

@@ -1,0 +1,1 @@
+CREATE TABLE unsynced_removed_recoverable_messages (ROWID INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, chat_guid TEXT NOT NULL, message_guid TEXT NOT NULL, part_index INTEGER);

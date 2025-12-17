@@ -1,0 +1,5 @@
+CREATE TABLE message_attachment_join (message_id INTEGER REFERENCES message (ROWID) ON DELETE CASCADE, attachment_id INTEGER REFERENCES attachment (ROWID) ON DELETE CASCADE, UNIQUE(message_id, attachment_id));
+CREATE INDEX message_attachment_join_idx_message_id ON message_attachment_join(message_id);
+CREATE INDEX message_attachment_join_idx_attachment_id ON message_attachment_join(attachment_id);
+CREATE TRIGGER after_insert_on_message_attachment_join AFTER INSERT ON message_attachment_join BEGIN     UPDATE message       SET cache_has_attachments = 1     WHERE       message.ROWID = NEW.message_id; END;
+CREATE TRIGGER after_delete_on_message_attachment_join AFTER DELETE ON message_attachment_join BEGIN     DELETE FROM attachment         WHERE attachment.ROWID = OLD.attachment_id     AND         (SELECT 1 from message_attachment_join WHERE attachment_id = OLD.attachment_id LIMIT 1) IS NULL; END;

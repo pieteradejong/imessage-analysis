@@ -22,7 +22,7 @@
 
 `handle`
 
-* table description
+* Contacts, i.e. people.
 
 `sync_deleted_chats`
 
@@ -46,7 +46,7 @@
 
 `message`
 
-* Arguably the most important table along with `handle` ("contacts" i.e. people). Contains the body of any message sent or received. 
+* Body of messages sent or received. 
 
 `chat`
 

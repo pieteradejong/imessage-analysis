@@ -1,0 +1,2 @@
+CREATE TABLE message_processing_task (ROWID INTEGER PRIMARY KEY AUTOINCREMENT UNIQUE, guid TEXT NOT NULL, task_flags INTEGER NOT NULL );
+CREATE INDEX message_processing_task_idx_guid_task_flags ON message_processing_task(guid, task_flags);
