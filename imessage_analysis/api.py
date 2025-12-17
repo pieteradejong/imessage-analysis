@@ -51,6 +51,8 @@ def _open_db() -> DatabaseConnection:
 
     if _env_bool("IMESSAGE_SNAPSHOT", default=False):
         snapshot_dir = Path(os.getenv("IMESSAGE_SNAPSHOT_DIR", "snapshots"))
+        if not config.db_path_str:
+            raise RuntimeError("Database path not configured")
         result = create_timestamped_snapshot(Path(config.db_path_str), snapshot_dir)
         config = get_config(db_path=str(result.snapshot_path))
 
@@ -113,4 +115,3 @@ def top_chats(
         return stats[:limit]
     finally:
         db.close()
-
