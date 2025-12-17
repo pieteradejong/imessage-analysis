@@ -3,12 +3,28 @@ SQL query definitions for iMessage analysis.
 
 Contains reusable SQL query strings for common operations.
 """
-from typing import List
+import re
+from typing import Any, List, Tuple
 
 
 def table_names() -> str:
     """Get query to retrieve all table names."""
     return "SELECT `name` FROM `sqlite_master` WHERE `type`='table';"
+
+
+_SQLITE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _require_sqlite_identifier(value: str, *, field_name: str) -> str:
+    """
+    Validate an identifier (e.g. table name) to prevent SQL injection.
+
+    SQLite does not support binding identifiers as parameters, so we must validate
+    before safely interpolating into SQL.
+    """
+    if not _SQLITE_IDENTIFIER_RE.fullmatch(value):
+        raise ValueError(f"Invalid {field_name}: {value!r}")
+    return value
 
 
 def rows_count(table_names: List[str]) -> str:
@@ -26,8 +42,10 @@ def rows_count(table_names: List[str]) -> str:
     
     query = "SELECT "
     for tn in table_names[:-1]:
-        query += f"(SELECT COUNT(*) FROM `{tn}`), "
-    query += f"(SELECT COUNT(*) FROM `{table_names[-1]}`);"
+        safe_tn = _require_sqlite_identifier(tn, field_name="table_name")
+        query += f"(SELECT COUNT(*) FROM `{safe_tn}`), "
+    safe_last = _require_sqlite_identifier(table_names[-1], field_name="table_name")
+    query += f"(SELECT COUNT(*) FROM `{safe_last}`);"
     return query
 
 
@@ -41,7 +59,8 @@ def columns_for_table(table_name: str) -> str:
     Returns:
         SQL query string.
     """
-    return f"PRAGMA table_info('{table_name}');"
+    safe_table = _require_sqlite_identifier(table_name, field_name="table_name")
+    return f"PRAGMA table_info('{safe_table}');"
 
 
 def table_creation_query(table_name: str) -> str:
@@ -77,7 +96,7 @@ def get_all_contacts() -> str:
     """
 
 
-def get_latest_messages(limit: int = 10) -> str:
+def get_latest_messages(limit: int = 10) -> Tuple[str, Tuple[Any, ...]]:
     """
     Get query to retrieve the latest messages.
     
@@ -85,9 +104,9 @@ def get_latest_messages(limit: int = 10) -> str:
         limit: Number of messages to retrieve.
         
     Returns:
-        SQL query string.
+        (SQL query string, parameters tuple).
     """
-    return f"""
+    query = """
         SELECT
             datetime(message.date / 1000000000 + strftime("%s", "2001-01-01"), "unixepoch", "localtime") AS message_date,
             message.text,
@@ -100,8 +119,9 @@ def get_latest_messages(limit: int = 10) -> str:
         JOIN message ON chat_message_join.message_id = message.ROWID
         LEFT JOIN handle ON message.handle_id = handle.ROWID
         ORDER BY message.date DESC
-        LIMIT {limit};
+        LIMIT ?;
     """
+    return query, (int(limit),)
 
 
 def get_all_messages() -> str:
@@ -125,7 +145,7 @@ def get_all_messages() -> str:
     """
 
 
-def get_messages_fuzzy_match(search_term: str) -> str:
+def get_messages_fuzzy_match(search_term: str) -> Tuple[str, Tuple[Any, ...]]:
     """
     Get query to search messages by text content (fuzzy match).
     
@@ -133,9 +153,9 @@ def get_messages_fuzzy_match(search_term: str) -> str:
         search_term: Text to search for (will be used with LIKE).
         
     Returns:
-        SQL query string.
+        (SQL query string, parameters tuple).
     """
-    return f"""
+    query = """
         SELECT
             datetime(message.date / 1000000000 + strftime("%s", "2001-01-01"), "unixepoch", "localtime") AS message_date,
             message.text,
@@ -146,9 +166,10 @@ def get_messages_fuzzy_match(search_term: str) -> str:
         JOIN chat_message_join ON chat.ROWID = chat_message_join.chat_id
         JOIN message ON chat_message_join.message_id = message.ROWID
         WHERE
-            message.text LIKE '%{search_term}%'
+            message.text LIKE ?
         ORDER BY message_date ASC;
     """
+    return query, (f"%{search_term}%",)
 
 
 def get_total_messages_by_chat() -> str:
@@ -171,7 +192,7 @@ def get_total_messages_by_chat() -> str:
     """
 
 
-def get_chars_and_length_by_counterpart(chat_identifier: str) -> str:
+def get_chars_and_length_by_counterpart(chat_identifier: str) -> Tuple[str, Tuple[Any, ...]]:
     """
     Get query to analyze message count and character count by counterpart.
     
@@ -179,9 +200,9 @@ def get_chars_and_length_by_counterpart(chat_identifier: str) -> str:
         chat_identifier: Chat identifier to filter by.
         
     Returns:
-        SQL query string.
+        (SQL query string, parameters tuple).
     """
-    return f"""
+    query = """
         SELECT
             COUNT(*) AS message_count,
             SUM(LENGTH(message.text)) AS character_count,
@@ -192,8 +213,9 @@ def get_chars_and_length_by_counterpart(chat_identifier: str) -> str:
         JOIN chat_message_join ON chat.ROWID = chat_message_join.chat_id
         JOIN message ON chat_message_join.message_id = message.ROWID
         WHERE
-            chat.chat_identifier = '{chat_identifier}'
+            chat.chat_identifier = ?
         GROUP BY message.is_from_me;
     """
+    return query, (chat_identifier,)
 
 

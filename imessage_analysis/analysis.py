@@ -29,8 +29,8 @@ def get_latest_messages_data(db: DatabaseConnection, limit: int = 10) -> List[Di
     Returns:
         List of message dictionaries with keys: date, text, is_from_me, chat_identifier, handle_id.
     """
-    query = get_latest_messages(limit)
-    rows = db.execute_query(query)
+    query, params = get_latest_messages(limit)
+    rows = db.execute_query(query, params)
     
     messages = []
     for row in rows:
@@ -81,8 +81,8 @@ def get_chat_analysis(db: DatabaseConnection, chat_identifier: str) -> Dict[str,
     Returns:
         Dictionary with message counts, character counts, and other statistics.
     """
-    query = get_chars_and_length_by_counterpart(chat_identifier)
-    rows = db.execute_query(query)
+    query, params = get_chars_and_length_by_counterpart(chat_identifier)
+    rows = db.execute_query(query, params)
     
     analysis = {
         'chat_identifier': chat_identifier,

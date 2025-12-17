@@ -111,6 +111,17 @@ class DatabaseConnection:
         if self._connection is None:
             raise RuntimeError("Database connection not established. Call connect() first.")
         return self._connection
+
+    def _require_table_exists(self, table_name: str) -> str:
+        """
+        Validate a table name before interpolating into SQL.
+
+        SQLite does not support binding identifiers, so we only allow table names
+        that exist in sqlite_master.
+        """
+        if table_name not in self.get_table_names():
+            raise ValueError(f"Unknown table name: {table_name!r}")
+        return table_name
     
     def get_table_names(self) -> List[str]:
         """
@@ -135,7 +146,8 @@ class DatabaseConnection:
         Returns:
             List of column information tuples (name, type, notnull, default, pk).
         """
-        query = f"PRAGMA table_info('{table_name}');"
+        safe_table = self._require_table_exists(table_name)
+        query = f"PRAGMA table_info('{safe_table}');"
         with closing(self.connection.cursor()) as cursor:
             cursor.execute(query)
             return cursor.fetchall()
@@ -150,7 +162,8 @@ class DatabaseConnection:
         Returns:
             Number of rows in the table.
         """
-        query = f"SELECT COUNT(*) FROM `{table_name}`;"
+        safe_table = self._require_table_exists(table_name)
+        query = f"SELECT COUNT(*) FROM `{safe_table}`;"
         with closing(self.connection.cursor()) as cursor:
             cursor.execute(query)
             result = cursor.fetchone()

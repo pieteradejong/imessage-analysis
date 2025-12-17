@@ -140,8 +140,8 @@ from imessage_analysis.queries import get_latest_messages
 
 config = get_config()
 with DatabaseConnection(config) as db:
-    query = get_latest_messages(limit=20)
-    results = db.execute_query(query)
+    query, params = get_latest_messages(limit=20)
+    results = db.execute_query(query, params)
 ```
 
 ## Benefits of This Structure
