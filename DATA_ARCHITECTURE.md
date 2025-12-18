@@ -9,6 +9,43 @@ and produces a **third database you own** (`analysis.db`) that acts as a stable 
 
 ---
 
+## System Architecture Overview
+
+```mermaid
+graph TB
+    subgraph Frontend["Frontend (React)"]
+        UI[React App]
+        API_Client[api.ts]
+    end
+    
+    subgraph Backend["Backend (Python)"]
+        FastAPI[FastAPI Server]
+        Analysis[analysis.py]
+        ETL[ETL Pipeline]
+    end
+    
+    subgraph Data["Data Layer"]
+        Snapshot[Snapshot Manager]
+        AnalysisDB[(analysis.db)]
+    end
+    
+    subgraph Apple["Apple Databases (Read-Only)"]
+        ChatDB[(chat.db)]
+        Contacts[(AddressBook)]
+    end
+    
+    UI --> API_Client
+    API_Client --> FastAPI
+    FastAPI --> Analysis
+    Analysis --> AnalysisDB
+    ETL --> Snapshot
+    Snapshot --> ChatDB
+    ETL --> AnalysisDB
+    ETL -.-> Contacts
+```
+
+---
+
 ## 1. The Core Problem
 
 You want to analyze iMessage data **with human identity attached** (who is who), but:
@@ -93,7 +130,40 @@ Apple DBs (read-only)
    analysis.db  ← your schema, your rules
 ```
 
-This is a **local data warehouse**, even if it’s just SQLite.
+This is a **local data warehouse**, even if it's just SQLite.
+
+### ETL Pipeline Flow
+
+```mermaid
+flowchart LR
+    subgraph Sources["Apple Databases (Read-Only)"]
+        ChatDB[(chat.db)]
+        ContactsDB[(AddressBook.abcddb)]
+    end
+    
+    subgraph Snapshot["Safety Layer"]
+        Snap[(chat_snapshot.db)]
+    end
+    
+    subgraph ETL["ETL Pipeline"]
+        Extract[Extract]
+        Normalize[Normalize]
+        Resolve[Identity Resolution]
+        Load[Load]
+    end
+    
+    subgraph Target["Your Database"]
+        AnalysisDB[(analysis.db)]
+    end
+    
+    ChatDB -->|backup API| Snap
+    Snap --> Extract
+    ContactsDB --> Extract
+    Extract --> Normalize
+    Normalize --> Resolve
+    Resolve --> Load
+    Load --> AnalysisDB
+```
 
 ---
 
@@ -185,11 +255,60 @@ text
 
 Your primary fact table.
 
+### Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    dim_person ||--o{ dim_contact_method : has
+    dim_person ||--o{ dim_handle : linked_to
+    dim_handle ||--o{ fact_message : sent_by
+    dim_chat ||--o{ fact_message : contains
+    
+    dim_person {
+        int person_id PK
+        string display_name
+        string first_name
+        string last_name
+        string source
+    }
+    
+    dim_handle {
+        int handle_id PK
+        int person_id FK
+        string value_raw
+        string value_normalized
+        string handle_type
+    }
+    
+    dim_contact_method {
+        int method_id PK
+        int person_id FK
+        string type
+        string value_raw
+        string value_normalized
+    }
+    
+    fact_message {
+        int message_id PK
+        int handle_id FK
+        int chat_id FK
+        datetime date_utc
+        boolean is_from_me
+        string text
+    }
+    
+    dim_chat {
+        int chat_id PK
+        string chat_identifier
+        string display_name
+    }
+```
+
 ---
 
 ## 7. Identity Resolution (Critical Piece)
 
-Identity resolution is **not a join** — it’s a process.
+Identity resolution is **not a join** — it's a process.
 
 ### Inputs
 
@@ -208,6 +327,20 @@ Identity resolution is **not a join** — it’s a process.
 4. Allow manual overrides later
 
 This avoids re-running fuzzy logic on every query.
+
+### Identity Resolution Flow
+
+```mermaid
+flowchart TD
+    H[Handle from chat.db] --> N[Normalize value]
+    N --> Q{Match in dim_contact_method?}
+    Q -->|Yes| L[Link to existing person_id]
+    Q -->|No| I{Infer from handle?}
+    I -->|Yes| C[Create inferred person]
+    I -->|No| U[Leave unresolved]
+    L --> D[Update dim_handle.person_id]
+    C --> D
+```
 
 ---
 
@@ -238,6 +371,27 @@ Original chat.db          Snapshot Directory              analysis.db
 ```
 
 ### Snapshot Lifecycle
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant SnapshotManager
+    participant SnapshotsDir
+    participant ChatDB
+    
+    App->>SnapshotManager: run_etl_with_snapshot()
+    SnapshotManager->>SnapshotsDir: get_latest_snapshot()
+    
+    alt No snapshot or age > max_age_days
+        SnapshotManager->>ChatDB: SQLite backup API
+        ChatDB-->>SnapshotsDir: chat_YYYYMMDD_HHMMSS.db
+        SnapshotsDir-->>SnapshotManager: new snapshot path
+    else Valid snapshot exists
+        SnapshotsDir-->>SnapshotManager: existing snapshot path
+    end
+    
+    SnapshotManager->>App: ETL runs on snapshot
+```
 
 1. Before ETL runs, check if a recent snapshot exists
 2. If no snapshot or snapshot exceeds `max_age_days` (default: 7), create new one
@@ -290,7 +444,7 @@ This architecture gives you:
 * Clear separation of concerns
 * Room to grow (DuckDB, Postgres later)
 
-You’re doing **just enough data engineering** to stay sane.
+You're doing **just enough data engineering** to stay sane.
 
 ---
 
