@@ -14,6 +14,9 @@ from imessage_analysis.queries import (
     get_total_messages_by_chat,
     get_chars_and_length_by_counterpart,
     get_all_contacts,
+    get_contact_by_id,
+    get_contact_statistics,
+    get_contact_chats,
 )
 
 logger = logging.getLogger(__name__)
@@ -183,3 +186,127 @@ def get_database_summary(db: DatabaseConnection) -> Dict[str, Any]:
 
     logger.info("Generated database summary")
     return summary
+
+
+def get_contact_detail(db: DatabaseConnection, handle_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Get detailed information for a specific contact.
+
+    Args:
+        db: Database connection.
+        handle_id: The handle identifier (e.g., phone number or email).
+
+    Returns:
+        Dictionary with contact info, or None if not found.
+    """
+    query, params = get_contact_by_id(handle_id)
+    rows = db.execute_query(query, params)
+
+    if not rows:
+        return None
+
+    row = rows[0]
+    contact = {
+        "rowid": row[0],
+        "id": row[1],
+        "country": row[2],
+        "service": row[3],
+        "uncanonicalized_id": row[4],
+        "person_centric_id": row[5],
+    }
+
+    logger.info(f"Retrieved contact detail for: {handle_id}")
+    return contact
+
+
+def get_contact_stats(db: DatabaseConnection, handle_id: str) -> Dict[str, Any]:
+    """
+    Get message statistics for a specific contact.
+
+    Args:
+        db: Database connection.
+        handle_id: The handle identifier.
+
+    Returns:
+        Dictionary with message statistics.
+    """
+    query, params = get_contact_statistics(handle_id)
+    rows = db.execute_query(query, params)
+
+    stats: Dict[str, Any] = {
+        "handle_id": handle_id,
+        "from_me": {
+            "message_count": 0,
+            "character_count": 0,
+            "first_message": None,
+            "last_message": None,
+        },
+        "from_them": {
+            "message_count": 0,
+            "character_count": 0,
+            "first_message": None,
+            "last_message": None,
+        },
+        "total_messages": 0,
+        "total_characters": 0,
+    }
+
+    for row in rows:
+        is_from_me = bool(row[2])
+        data = {
+            "message_count": row[0] or 0,
+            "character_count": row[1] or 0,
+            "first_message": row[3],
+            "last_message": row[4],
+        }
+        if is_from_me:
+            stats["from_me"] = data
+        else:
+            stats["from_them"] = data
+
+    stats["total_messages"] = (
+        stats["from_me"]["message_count"] + stats["from_them"]["message_count"]
+    )
+    stats["total_characters"] = (
+        stats["from_me"]["character_count"] + stats["from_them"]["character_count"]
+    )
+
+    # Calculate percentages
+    if stats["total_messages"] > 0:
+        stats["from_me"]["percentage"] = round(
+            (stats["from_me"]["message_count"] / stats["total_messages"]) * 100, 1
+        )
+        stats["from_them"]["percentage"] = round(
+            (stats["from_them"]["message_count"] / stats["total_messages"]) * 100, 1
+        )
+
+    logger.info(f"Retrieved statistics for contact: {handle_id}")
+    return stats
+
+
+def get_contact_chats_data(db: DatabaseConnection, handle_id: str) -> List[Dict[str, Any]]:
+    """
+    Get all chats a contact participates in.
+
+    Args:
+        db: Database connection.
+        handle_id: The handle identifier.
+
+    Returns:
+        List of chat dictionaries.
+    """
+    query, params = get_contact_chats(handle_id)
+    rows = db.execute_query(query, params)
+
+    chats = []
+    for row in rows:
+        chats.append(
+            {
+                "chat_identifier": row[0],
+                "display_name": row[1],
+                "message_count": row[2],
+            }
+        )
+
+    logger.info(f"Retrieved {len(chats)} chats for contact: {handle_id}")
+    return chats

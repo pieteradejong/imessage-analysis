@@ -289,6 +289,9 @@ def real_chat_db() -> Optional[Path]:
     """
     Return path to real chat.db if available and accessible.
 
+    NOTE: This fixture returns the ORIGINAL chat.db path. For most tests,
+    prefer using `real_chat_db_snapshot` which works from a safe copy.
+
     This fixture is for integration tests that need to run against
     actual iMessage data. Tests using this fixture should be marked
     with @pytest.mark.integration.
@@ -309,6 +312,41 @@ def real_chat_db() -> Optional[Path]:
         pytest.skip("Cannot access chat.db (permission denied or locked)")
 
     return path
+
+
+@pytest.fixture
+def real_chat_db_snapshot(real_chat_db: Path, tmp_path: Path) -> Path:
+    """
+    Return path to a snapshot of the real chat.db.
+
+    This is the RECOMMENDED fixture for integration tests. It creates a
+    snapshot of the real chat.db and returns the snapshot path, ensuring
+    tests never access the original database directly.
+
+    The snapshot is created in a temp directory and is automatically
+    cleaned up after the test.
+
+    Returns:
+        Path to snapshot of chat.db, or skips test if chat.db not available.
+    """
+    from imessage_analysis.snapshot import create_timestamped_snapshot
+
+    snapshots_dir = tmp_path / "snapshots"
+    result = create_timestamped_snapshot(real_chat_db, snapshots_dir)
+    return result.snapshot_path
+
+
+@pytest.fixture
+def real_snapshots_dir(tmp_path: Path) -> Path:
+    """
+    Return path to a temporary snapshots directory for integration tests.
+
+    Returns:
+        Path to temporary snapshots directory.
+    """
+    snapshots_dir = tmp_path / "snapshots"
+    snapshots_dir.mkdir(parents=True, exist_ok=True)
+    return snapshots_dir
 
 
 @pytest.fixture

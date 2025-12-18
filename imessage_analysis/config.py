@@ -4,9 +4,16 @@ Configuration module for iMessage Analysis project.
 Handles configuration settings including database file paths.
 
 Database Paths:
-    - chat.db: Apple's iMessage database (read-only source)
+    - chat.db: Apple's iMessage database (read-only source, accessed via snapshot)
     - analysis.db: Our analytical database (read-write target)
     - AddressBook: Apple's Contacts database (read-only, optional)
+
+Snapshot Strategy:
+    The ETL pipeline never accesses chat.db directly. Instead, it works from
+    snapshots stored in the snapshots directory. This provides:
+    - Safety: Original database is never touched
+    - Consistency: Analysis runs on a point-in-time copy
+    - Reproducibility: Same snapshot yields same results
 
 See DATA_ARCHITECTURE.md for the full data architecture.
 """
@@ -32,11 +39,17 @@ class Config:
     # Default path to Contacts database on macOS
     DEFAULT_CONTACTS_PATH = Path.home() / "Library" / "Application Support" / "AddressBook"
 
+    # Snapshot configuration defaults
+    DEFAULT_SNAPSHOTS_DIR_NAME = "snapshots"
+    DEFAULT_SNAPSHOT_MAX_AGE_DAYS = 7
+
     def __init__(
         self,
         db_path: Optional[str] = None,
         analysis_db_path: Optional[str] = None,
         contacts_db_path: Optional[str] = None,
+        snapshots_dir: Optional[str] = None,
+        snapshot_max_age_days: Optional[int] = None,
     ):
         """
         Initialize configuration.
@@ -48,8 +61,12 @@ class Config:
                     defaults to ~/.imessage_analysis/analysis.db
             contacts_db_path: Optional path to AddressBook database. If not provided,
                     will attempt to find it in the default location.
+            snapshots_dir: Optional path to snapshots directory. If not provided,
+                    defaults to ~/.imessage_analysis/snapshots
+            snapshot_max_age_days: Maximum age of snapshots in days before refresh.
+                    Defaults to 7 days.
         """
-        # Chat.db path (source)
+        # Chat.db path (source - only used for creating snapshots)
         self._db_path: Optional[Path] = None
         if db_path:
             self._db_path = Path(db_path)
@@ -76,6 +93,20 @@ class Config:
         else:
             # Try to find AddressBook database
             self._contacts_db_path = self._find_contacts_db()
+
+        # Snapshots directory
+        self._snapshots_dir: Path
+        if snapshots_dir:
+            self._snapshots_dir = Path(snapshots_dir)
+        else:
+            self._snapshots_dir = self.DEFAULT_ANALYSIS_PATH / self.DEFAULT_SNAPSHOTS_DIR_NAME
+
+        # Snapshot max age (in days)
+        self._snapshot_max_age_days: int = (
+            snapshot_max_age_days
+            if snapshot_max_age_days is not None
+            else self.DEFAULT_SNAPSHOT_MAX_AGE_DAYS
+        )
 
     def _find_contacts_db(self) -> Optional[Path]:
         """
@@ -127,6 +158,21 @@ class Config:
         """Get the Contacts database file path as a string."""
         return str(self._contacts_db_path) if self._contacts_db_path else None
 
+    @property
+    def snapshots_dir(self) -> Path:
+        """Get the snapshots directory path."""
+        return self._snapshots_dir
+
+    @property
+    def snapshots_dir_str(self) -> str:
+        """Get the snapshots directory path as a string."""
+        return str(self._snapshots_dir)
+
+    @property
+    def snapshot_max_age_days(self) -> int:
+        """Get the maximum snapshot age in days before refresh."""
+        return self._snapshot_max_age_days
+
     def validate(self) -> bool:
         """
         Validate that the chat.db file exists and is readable.
@@ -156,6 +202,14 @@ class Config:
         Creates the directory if it doesn't exist.
         """
         self._analysis_db_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def ensure_snapshots_dir(self) -> None:
+        """
+        Ensure the snapshots directory exists.
+
+        Creates the directory if it doesn't exist.
+        """
+        self._snapshots_dir.mkdir(parents=True, exist_ok=True)
 
 
 # Global configuration instance

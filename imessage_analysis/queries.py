@@ -220,3 +220,79 @@ def get_chars_and_length_by_counterpart(chat_identifier: str) -> Tuple[str, Tupl
         GROUP BY message.is_from_me;
     """
     return query, (chat_identifier,)
+
+
+def get_contact_by_id(handle_id: str) -> Tuple[str, Tuple[Any, ...]]:
+    """
+    Get query to retrieve a specific contact by their handle id.
+
+    Args:
+        handle_id: The handle identifier (e.g., phone number or email).
+
+    Returns:
+        (SQL query string, parameters tuple).
+    """
+    query = """
+        SELECT 
+            ROWID,
+            id,
+            country,
+            service,
+            uncanonicalized_id,
+            person_centric_id
+        FROM handle
+        WHERE id = ?;
+    """
+    return query, (handle_id,)
+
+
+def get_contact_statistics(handle_id: str) -> Tuple[str, Tuple[Any, ...]]:
+    """
+    Get query to retrieve message statistics for a specific contact.
+
+    Args:
+        handle_id: The handle identifier (e.g., phone number or email).
+
+    Returns:
+        (SQL query string, parameters tuple).
+    """
+    query = """
+        SELECT
+            COUNT(*) AS message_count,
+            SUM(LENGTH(message.text)) AS character_count,
+            message.is_from_me,
+            MIN(datetime(message.date / 1000000000 + strftime("%s", "2001-01-01"), "unixepoch", "localtime")) AS first_message,
+            MAX(datetime(message.date / 1000000000 + strftime("%s", "2001-01-01"), "unixepoch", "localtime")) AS last_message
+        FROM message
+        JOIN handle ON message.handle_id = handle.ROWID
+        WHERE handle.id = ?
+        GROUP BY message.is_from_me;
+    """
+    return query, (handle_id,)
+
+
+def get_contact_chats(handle_id: str) -> Tuple[str, Tuple[Any, ...]]:
+    """
+    Get query to retrieve all chats a contact participates in.
+
+    Args:
+        handle_id: The handle identifier.
+
+    Returns:
+        (SQL query string, parameters tuple).
+    """
+    query = """
+        SELECT DISTINCT
+            chat.chat_identifier,
+            chat.display_name,
+            COUNT(message.ROWID) AS message_count
+        FROM chat
+        JOIN chat_handle_join ON chat.ROWID = chat_handle_join.chat_id
+        JOIN handle ON chat_handle_join.handle_id = handle.ROWID
+        LEFT JOIN chat_message_join ON chat.ROWID = chat_message_join.chat_id
+        LEFT JOIN message ON chat_message_join.message_id = message.ROWID
+        WHERE handle.id = ?
+        GROUP BY chat.chat_identifier, chat.display_name
+        ORDER BY message_count DESC;
+    """
+    return query, (handle_id,)

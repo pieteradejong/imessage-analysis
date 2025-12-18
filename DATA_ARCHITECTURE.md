@@ -211,7 +211,55 @@ This avoids re-running fuzzy logic on every query.
 
 ---
 
-## 8. Refresh / Incremental Update Strategy
+## 8. Snapshot-First Strategy (Safety Pattern)
+
+**The ETL pipeline NEVER accesses the original chat.db directly.**
+
+Instead, it works from snapshots stored in a dedicated directory. This provides:
+
+### Why Snapshots?
+
+* **Safety**: Original database is never touched, even accidentally
+* **Consistency**: Analysis runs on a point-in-time copy (no mid-ETL changes)
+* **No lock contention**: Won't compete with iMessage for database access
+* **Reproducibility**: Same snapshot = same analysis results
+
+### How It Works
+
+```
+Original chat.db          Snapshot Directory              analysis.db
+~/Library/Messages/       ~/.imessage_analysis/snapshots/
+                    
+┌─────────────┐           ┌──────────────────────┐       ┌─────────────┐
+│  chat.db    │──backup──►│chat_20250115_103045.db│──ETL──►│ analysis.db │
+│ (READ ONLY) │           │chat_20250108_091230.db│       │ (YOUR DATA) │
+└─────────────┘           │      ...              │       └─────────────┘
+                          └──────────────────────┘
+```
+
+### Snapshot Lifecycle
+
+1. Before ETL runs, check if a recent snapshot exists
+2. If no snapshot or snapshot exceeds `max_age_days` (default: 7), create new one
+3. Use SQLite's backup API for safe, consistent snapshots
+4. ETL reads exclusively from the snapshot
+
+### Configuration
+
+```python
+Config(
+    snapshots_dir="~/.imessage_analysis/snapshots",  # Where snapshots live
+    snapshot_max_age_days=7,                          # Refresh threshold
+)
+```
+
+### Cleanup
+
+Old snapshots can be cleaned up automatically (keep_count=3 by default).
+
+---
+
+## 9. Refresh / Incremental Update Strategy
 
 You should **never rebuild everything**.
 
@@ -233,7 +281,7 @@ This keeps startup fast even with large histories.
 
 ---
 
-## 9. Why This Is the Right Tradeoff
+## 10. Why This Is the Right Tradeoff
 
 This architecture gives you:
 
@@ -246,16 +294,17 @@ You’re doing **just enough data engineering** to stay sane.
 
 ---
 
-## 10. Mental Model to Keep
+## 11. Mental Model to Keep
 
 * Apple DBs = undocumented external APIs
 * Contacts DB = object graph, not analytics store
 * `analysis.db` = your contract
 * Option B = translation boundary
+* **Snapshots = safety boundary** (never touch the original)
 
 ---
 
-## 11. Next Questions (Intentionally Deferred)
+## 12. Next Questions (Intentionally Deferred)
 
 * What *additional* signals from Contacts are worth extracting?
 * Can identity + conversations be modeled as graphs?

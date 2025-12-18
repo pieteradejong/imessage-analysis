@@ -5,9 +5,18 @@ This module orchestrates the full ETL flow from chat.db (and optionally
 Contacts DB) to analysis.db. It coordinates extraction, transformation,
 loading, and identity resolution.
 
+IMPORTANT: Snapshot-First Strategy
+    The ETL pipeline NEVER accesses the original chat.db directly.
+    Instead, it works from snapshots stored in a dedicated directory.
+    This provides:
+    - Safety: Original database is never touched
+    - Consistency: Analysis runs on a point-in-time copy
+    - Reproducibility: Same snapshot yields same results
+
 Pipeline Steps:
+    0. Get or create a chat.db snapshot (if needed)
     1. Initialize analysis.db schema (if needed)
-    2. Extract handles from chat.db
+    2. Extract handles from snapshot
     3. Load handles into dim_handle
     4. Extract messages (incremental if possible)
     5. Load messages into fact_message
@@ -51,6 +60,7 @@ from imessage_analysis.etl.loaders import (
     get_loaded_contact_method_count,
 )
 from imessage_analysis.etl.identity import resolve_all_handles
+from imessage_analysis.snapshot import get_or_create_snapshot, get_latest_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +81,9 @@ class ETLResult:
     contacts_extracted: int = 0
     contact_methods_loaded: int = 0
     contacts_synced: bool = False
+    # Snapshot information
+    snapshot_path: Optional[Path] = None
+    snapshot_created: bool = False
     # Error and timing
     error: Optional[str] = None
     duration_seconds: float = 0.0
@@ -81,8 +94,12 @@ class ETLResult:
         contacts_info = ""
         if self.contacts_synced:
             contacts_info = f"\n  Contacts: {self.contacts_extracted} extracted, {self.contact_methods_loaded} methods loaded"
+        snapshot_info = ""
+        if self.snapshot_path:
+            action = "created" if self.snapshot_created else "reused"
+            snapshot_info = f"\n  Snapshot: {self.snapshot_path.name} ({action})"
         return (
-            f"ETL {status} ({mode})\n"
+            f"ETL {status} ({mode}){snapshot_info}\n"
             f"  Handles: {self.handles_extracted} extracted, {self.handles_loaded} loaded\n"
             f"  Messages: {self.messages_extracted} extracted, {self.messages_loaded} loaded"
             f"{contacts_info}\n"
@@ -306,3 +323,87 @@ def get_etl_status(analysis_db_path: Path) -> dict:
         }
     finally:
         conn.close()
+
+
+def run_etl_with_snapshot(
+    source_db_path: Path,
+    analysis_db_path: Path,
+    snapshots_dir: Path,
+    contacts_db_path: Optional[Path] = None,
+    snapshot_max_age_days: int = 7,
+    force_full: bool = False,
+    force_new_snapshot: bool = False,
+) -> ETLResult:
+    """
+    Run the full ETL pipeline using a snapshot of the source database.
+
+    This is the recommended entry point for ETL. It ensures the original
+    chat.db is never accessed directly during ETL processing.
+
+    Snapshot Strategy:
+        1. Check if a recent snapshot exists (within snapshot_max_age_days)
+        2. If not, create a new snapshot from source_db_path
+        3. Run ETL against the snapshot
+
+    Args:
+        source_db_path: Path to original chat.db (only used for snapshotting).
+        analysis_db_path: Path to analysis.db (destination).
+        snapshots_dir: Directory for storing snapshots.
+        contacts_db_path: Optional path to AddressBook database.
+        snapshot_max_age_days: Maximum age of snapshots before refresh (default: 7).
+        force_full: If True, ignore incremental ETL state and do full sync.
+        force_new_snapshot: If True, always create a new snapshot.
+
+    Returns:
+        ETLResult with statistics and success status.
+    """
+    start_time = datetime.now()
+
+    # Step 0: Get or create snapshot
+    logger.info("Step 0: Ensuring snapshot exists...")
+
+    # Check existing snapshot before creating
+    existing_snapshot = get_latest_snapshot(snapshots_dir, source_db_path.stem)
+    snapshot_existed = (
+        existing_snapshot is not None and existing_snapshot.age_days <= snapshot_max_age_days
+    )
+
+    try:
+        snapshot_path = get_or_create_snapshot(
+            source_db_path=source_db_path,
+            snapshots_dir=snapshots_dir,
+            max_age_days=snapshot_max_age_days,
+            force_new=force_new_snapshot,
+        )
+        snapshot_created = not snapshot_existed or force_new_snapshot
+    except (FileNotFoundError, PermissionError) as e:
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.error(f"Failed to create/get snapshot: {e}")
+        return ETLResult(
+            success=False,
+            handles_extracted=0,
+            handles_loaded=0,
+            messages_extracted=0,
+            messages_loaded=0,
+            handles_resolved=0,
+            messages_linked=0,
+            is_incremental=False,
+            error=f"Snapshot error: {e}",
+            duration_seconds=duration,
+        )
+
+    logger.info(f"Using snapshot: {snapshot_path}")
+
+    # Run ETL against the snapshot
+    result = run_etl(
+        chat_db_path=snapshot_path,
+        analysis_db_path=analysis_db_path,
+        contacts_db_path=contacts_db_path,
+        force_full=force_full,
+    )
+
+    # Add snapshot information to result
+    result.snapshot_path = snapshot_path
+    result.snapshot_created = snapshot_created
+
+    return result

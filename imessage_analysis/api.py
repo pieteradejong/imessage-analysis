@@ -11,13 +11,17 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from imessage_analysis.analysis import (
     get_database_summary,
     get_latest_messages_data,
     get_message_statistics_by_chat,
+    get_all_contacts_data,
+    get_contact_detail,
+    get_contact_stats,
+    get_contact_chats_data,
 )
 from imessage_analysis.config import get_config
 from imessage_analysis.database import DatabaseConnection
@@ -113,5 +117,40 @@ def top_chats(
     try:
         stats = get_message_statistics_by_chat(db)
         return stats[:limit]
+    finally:
+        db.close()
+
+
+@app.get("/contacts")
+def contacts() -> List[Dict[str, Any]]:
+    """Get all contacts (handles) from the database."""
+    db = _open_db()
+    try:
+        return get_all_contacts_data(db)
+    finally:
+        db.close()
+
+
+@app.get("/contacts/{handle_id:path}")
+def contact_detail(handle_id: str) -> Dict[str, Any]:
+    """
+    Get detailed information and statistics for a specific contact.
+
+    The handle_id is the contact identifier (phone number or email).
+    """
+    db = _open_db()
+    try:
+        contact = get_contact_detail(db, handle_id)
+        if contact is None:
+            raise HTTPException(status_code=404, detail=f"Contact not found: {handle_id}")
+
+        stats = get_contact_stats(db, handle_id)
+        chats = get_contact_chats_data(db, handle_id)
+
+        return {
+            "contact": contact,
+            "statistics": stats,
+            "chats": chats,
+        }
     finally:
         db.close()

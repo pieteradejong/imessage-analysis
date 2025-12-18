@@ -3,6 +3,13 @@ Expanded integration tests with comprehensive logging.
 
 These tests provide deeper coverage of the ETL pipeline with real data,
 including performance benchmarks, data quality checks, and edge case detection.
+
+IMPORTANT: Snapshot-First Strategy
+    All integration tests work from snapshots of chat.db, NEVER the original.
+    This ensures:
+    - Safety: Original database is never touched
+    - Consistency: Tests run against a stable point-in-time copy
+    - Reproducibility: Same snapshot yields same results
 """
 
 import sqlite3
@@ -13,7 +20,7 @@ from typing import Optional
 
 import pytest
 
-from imessage_analysis.etl.pipeline import run_etl, get_etl_status
+from imessage_analysis.etl.pipeline import run_etl, run_etl_with_snapshot, get_etl_status
 from imessage_analysis.etl.validation import validate_etl
 from imessage_analysis.etl.schema import verify_schema
 from imessage_analysis.etl.loaders import (
@@ -41,28 +48,31 @@ class TestRealDatabaseExpanded:
     Expanded integration tests with real chat.db.
 
     These tests provide more detailed coverage and logging.
+    All tests use snapshots via real_chat_db_snapshot fixture.
     """
 
-    def test_etl_with_logging(self, real_chat_db: Path, real_analysis_db: Path, test_logger):
+    def test_etl_with_logging(
+        self, real_chat_db_snapshot: Path, real_analysis_db: Path, test_logger
+    ):
         """ETL with comprehensive logging of all stages."""
         start = test_logger.log_test_start("test_etl_with_logging", self.__class__.__name__)
 
-        # Log source database stats
+        # Log source database stats (using snapshot)
         db_stats = test_logger.log_database_stats(
-            chat_db=real_chat_db,
+            chat_db=real_chat_db_snapshot,
             analysis_db=real_analysis_db,
         )
 
-        # Run ETL
-        result = run_etl(real_chat_db, real_analysis_db)
+        # Run ETL against snapshot
+        result = run_etl(real_chat_db_snapshot, real_analysis_db)
         etl_dict = test_logger.log_etl_result(result)
 
         # Log post-ETL stats
         db_stats_after = test_logger.log_database_stats(analysis_db=real_analysis_db)
         db_stats["analysis_after"] = db_stats_after.get("analysis")
 
-        # Run validation
-        validation = validate_etl(real_chat_db, real_analysis_db)
+        # Run validation against snapshot
+        validation = validate_etl(real_chat_db_snapshot, real_analysis_db)
         val_dict = test_logger.log_validation_result(validation)
 
         # Record results
@@ -79,18 +89,18 @@ class TestRealDatabaseExpanded:
         assert result.success, f"ETL failed: {result.error}"
         assert validation.passed, f"Validation failed: {validation.summary}"
 
-    def test_performance_benchmark(self, real_chat_db: Path, tmp_path: Path, test_logger):
+    def test_performance_benchmark(self, real_chat_db_snapshot: Path, tmp_path: Path, test_logger):
         """Benchmark ETL performance with timing metrics."""
         start = test_logger.log_test_start("test_performance_benchmark", self.__class__.__name__)
 
         analysis_db = tmp_path / "benchmark_analysis.db"
 
-        # Get source counts for context
-        db_stats = test_logger.log_database_stats(chat_db=real_chat_db)
+        # Get source counts for context (using snapshot)
+        db_stats = test_logger.log_database_stats(chat_db=real_chat_db_snapshot)
 
-        # Time the ETL
+        # Time the ETL against snapshot
         etl_start = time.perf_counter()
-        result = run_etl(real_chat_db, analysis_db)
+        result = run_etl(real_chat_db_snapshot, analysis_db)
         etl_duration = time.perf_counter() - etl_start
 
         etl_dict = test_logger.log_etl_result(result)
@@ -118,12 +128,14 @@ class TestRealDatabaseExpanded:
             msgs_per_sec = result.messages_extracted / etl_duration
             assert msgs_per_sec > 100, f"Performance too slow: {msgs_per_sec:.0f} msg/s"
 
-    def test_data_quality_profile(self, real_chat_db: Path, real_analysis_db: Path, test_logger):
+    def test_data_quality_profile(
+        self, real_chat_db_snapshot: Path, real_analysis_db: Path, test_logger
+    ):
         """Profile data quality metrics after ETL."""
         start = test_logger.log_test_start("test_data_quality_profile", self.__class__.__name__)
 
-        # Run ETL first
-        result = run_etl(real_chat_db, real_analysis_db)
+        # Run ETL first (using snapshot)
+        result = run_etl(real_chat_db_snapshot, real_analysis_db)
         if not result.success:
             test_logger.log_test_end(
                 "test_data_quality_profile",
@@ -207,15 +219,17 @@ class TestRealDatabaseExpanded:
             notes=notes,
         )
 
-    def test_incremental_consistency(self, real_chat_db: Path, tmp_path: Path, test_logger):
+    def test_incremental_consistency(
+        self, real_chat_db_snapshot: Path, tmp_path: Path, test_logger
+    ):
         """Verify incremental ETL produces consistent results."""
         start = test_logger.log_test_start("test_incremental_consistency", self.__class__.__name__)
 
         analysis_db = tmp_path / "incremental_test.db"
         notes = []
 
-        # First run
-        result1 = run_etl(real_chat_db, analysis_db)
+        # First run (using snapshot)
+        result1 = run_etl(real_chat_db_snapshot, analysis_db)
         notes.append(f"Run 1: {result1.messages_loaded} messages loaded")
 
         if not result1.success:
@@ -233,8 +247,8 @@ class TestRealDatabaseExpanded:
         handles1 = get_loaded_handle_count(conn)
         conn.close()
 
-        # Second run (should be incremental)
-        result2 = run_etl(real_chat_db, analysis_db)
+        # Second run (should be incremental, using same snapshot)
+        result2 = run_etl(real_chat_db_snapshot, analysis_db)
         notes.append(f"Run 2: {result2.messages_loaded} messages loaded (incremental)")
 
         conn = sqlite3.connect(str(analysis_db))
@@ -242,8 +256,8 @@ class TestRealDatabaseExpanded:
         handles2 = get_loaded_handle_count(conn)
         conn.close()
 
-        # Third run (verify stability)
-        result3 = run_etl(real_chat_db, analysis_db)
+        # Third run (verify stability, using same snapshot)
+        result3 = run_etl(real_chat_db_snapshot, analysis_db)
         notes.append(f"Run 3: {result3.messages_loaded} messages loaded")
 
         conn = sqlite3.connect(str(analysis_db))
@@ -268,11 +282,14 @@ class TestRealDatabaseExpanded:
         assert count3 == count2, "Third run should add no new messages"
         assert handles2 == handles1, "Handle count should be stable"
 
-    def test_edge_case_detection(self, real_chat_db: Path, real_analysis_db: Path, test_logger):
+    def test_edge_case_detection(
+        self, real_chat_db_snapshot: Path, real_analysis_db: Path, test_logger
+    ):
         """Detect and log edge cases in real data."""
         start = test_logger.log_test_start("test_edge_case_detection", self.__class__.__name__)
 
-        result = run_etl(real_chat_db, real_analysis_db)
+        # Run ETL using snapshot
+        result = run_etl(real_chat_db_snapshot, real_analysis_db)
         if not result.success:
             test_logger.log_test_end(
                 "test_edge_case_detection",
@@ -368,7 +385,7 @@ class TestRealDatabaseWithContacts:
 
     def test_full_pipeline_with_contacts(
         self,
-        real_chat_db: Path,
+        real_chat_db_snapshot: Path,
         tmp_path: Path,
         real_contacts_db: Optional[Path],
         test_logger,
@@ -381,12 +398,13 @@ class TestRealDatabaseWithContacts:
         analysis_db = tmp_path / "full_analysis.db"
 
         db_stats = test_logger.log_database_stats(
-            chat_db=real_chat_db,
+            chat_db=real_chat_db_snapshot,
             contacts_db=real_contacts_db,
         )
 
+        # Run ETL using snapshot
         result = run_etl(
-            real_chat_db,
+            real_chat_db_snapshot,
             analysis_db,
             contacts_db_path=real_contacts_db,
         )
@@ -431,17 +449,17 @@ class TestRealDatabaseWithContacts:
 class TestDataConsistency:
     """Tests for data consistency across ETL runs."""
 
-    def test_idempotent_etl(self, real_chat_db: Path, tmp_path: Path, test_logger):
+    def test_idempotent_etl(self, real_chat_db_snapshot: Path, tmp_path: Path, test_logger):
         """Multiple ETL runs should be idempotent."""
         start = test_logger.log_test_start("test_idempotent_etl", self.__class__.__name__)
 
         analysis_db = tmp_path / "idempotent_test.db"
         notes = []
 
-        # Run ETL 5 times
+        # Run ETL 5 times against the same snapshot
         counts = []
         for i in range(5):
-            result = run_etl(real_chat_db, analysis_db)
+            result = run_etl(real_chat_db_snapshot, analysis_db)
             if not result.success:
                 test_logger.log_test_end(
                     "test_idempotent_etl",

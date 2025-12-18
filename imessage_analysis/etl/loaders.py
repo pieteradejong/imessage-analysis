@@ -54,8 +54,9 @@ def load_handles(conn: sqlite3.Connection, handles: List[Handle]) -> int:
 
     query = """
         INSERT OR REPLACE INTO dim_handle 
-            (handle_id, value_raw, value_normalized, handle_type, created_at, updated_at)
+            (handle_id, value_raw, value_normalized, handle_type, person_id, created_at, updated_at)
         VALUES (?, ?, ?, ?, 
+            (SELECT person_id FROM dim_handle WHERE handle_id = ?),
             COALESCE((SELECT created_at FROM dim_handle WHERE handle_id = ?), ?),
             ?);
     """
@@ -69,7 +70,8 @@ def load_handles(conn: sqlite3.Connection, handles: List[Handle]) -> int:
                     handle.value_raw,
                     handle.value_normalized,
                     handle.handle_type,
-                    handle.rowid,  # For COALESCE subquery
+                    handle.rowid,  # For person_id subquery
+                    handle.rowid,  # For created_at COALESCE subquery
                     now,  # created_at if new
                     now,  # updated_at always
                 ),

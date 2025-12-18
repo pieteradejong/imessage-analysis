@@ -288,3 +288,52 @@ class TestDefaultPaths:
         expected = Path.home() / "Library" / "Application Support" / "AddressBook"
         # This test is patched, so we just verify the pattern is correct
         assert "AddressBook" in str(expected)
+
+    def test_default_snapshots_dir_name(self):
+        """DEFAULT_SNAPSHOTS_DIR_NAME should be 'snapshots'."""
+        assert Config.DEFAULT_SNAPSHOTS_DIR_NAME == "snapshots"
+
+    def test_default_snapshot_max_age_days(self):
+        """DEFAULT_SNAPSHOT_MAX_AGE_DAYS should be 7."""
+        assert Config.DEFAULT_SNAPSHOT_MAX_AGE_DAYS == 7
+
+
+class TestSnapshotConfig:
+    """Tests for snapshot configuration."""
+
+    def test_default_snapshots_dir(self):
+        """Default snapshots_dir should be ~/.imessage_analysis/snapshots."""
+        config = Config()
+        expected = Path.home() / ".imessage_analysis" / "snapshots"
+        assert config.snapshots_dir == expected
+
+    def test_custom_snapshots_dir(self, tmp_path: Path):
+        """Should use explicit snapshots_dir when provided."""
+        custom_dir = tmp_path / "my_snapshots"
+        config = Config(snapshots_dir=str(custom_dir))
+        assert config.snapshots_dir == custom_dir
+
+    def test_default_snapshot_max_age(self):
+        """Default snapshot_max_age_days should be 7."""
+        config = Config()
+        assert config.snapshot_max_age_days == 7
+
+    def test_custom_snapshot_max_age(self):
+        """Should use explicit snapshot_max_age_days when provided."""
+        config = Config(snapshot_max_age_days=14)
+        assert config.snapshot_max_age_days == 14
+
+    def test_snapshots_dir_str_property(self, tmp_path: Path):
+        """snapshots_dir_str should return string."""
+        custom_dir = tmp_path / "my_snapshots"
+        config = Config(snapshots_dir=str(custom_dir))
+        assert config.snapshots_dir_str == str(custom_dir)
+
+    def test_ensure_snapshots_dir(self, tmp_path: Path):
+        """ensure_snapshots_dir should create directory."""
+        snapshots_dir = tmp_path / "new_snapshots"
+        config = Config(snapshots_dir=str(snapshots_dir))
+
+        assert not snapshots_dir.exists()
+        config.ensure_snapshots_dir()
+        assert snapshots_dir.exists()

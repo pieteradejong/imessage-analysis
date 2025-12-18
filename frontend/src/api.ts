@@ -22,6 +22,47 @@ export type TopChat = {
   message_count: number;
 };
 
+export type Contact = {
+  rowid: number;
+  id: string;
+  country: string | null;
+  service: string;
+  uncanonicalized_id: string | null;
+  person_centric_id: string | null;
+};
+
+export type ContactStats = {
+  handle_id: string;
+  from_me: {
+    message_count: number;
+    character_count: number;
+    first_message: string | null;
+    last_message: string | null;
+    percentage?: number;
+  };
+  from_them: {
+    message_count: number;
+    character_count: number;
+    first_message: string | null;
+    last_message: string | null;
+    percentage?: number;
+  };
+  total_messages: number;
+  total_characters: number;
+};
+
+export type ContactChat = {
+  chat_identifier: string;
+  display_name: string | null;
+  message_count: number;
+};
+
+export type ContactDetail = {
+  contact: Contact;
+  statistics: ContactStats;
+  chats: ContactChat[];
+};
+
 const defaultBaseUrl = "http://127.0.0.1:8000";
 
 export function getApiBaseUrl(): string {
@@ -47,5 +88,13 @@ export function fetchLatest(limit: number): Promise<LatestMessage[]> {
 
 export function fetchTopChats(limit: number): Promise<TopChat[]> {
   return getJson<TopChat[]>(`/top-chats?limit=${encodeURIComponent(limit)}`);
+}
+
+export function fetchContacts(): Promise<Contact[]> {
+  return getJson<Contact[]>("/contacts");
+}
+
+export function fetchContactDetail(handleId: string): Promise<ContactDetail> {
+  return getJson<ContactDetail>(`/contacts/${encodeURIComponent(handleId)}`);
 }
 

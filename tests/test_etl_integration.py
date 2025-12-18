@@ -114,45 +114,46 @@ class TestRealDatabaseIntegration:
     """Integration tests with real chat.db.
 
     These tests are skipped if real chat.db is not available.
+    All tests use snapshots via real_chat_db_snapshot fixture.
     """
 
-    def test_real_etl_completes(self, real_chat_db: Path, real_analysis_db: Path):
-        """ETL should complete successfully with real data."""
-        result = run_etl(real_chat_db, real_analysis_db)
+    def test_real_etl_completes(self, real_chat_db_snapshot: Path, real_analysis_db: Path):
+        """ETL should complete successfully with real data (snapshot)."""
+        result = run_etl(real_chat_db_snapshot, real_analysis_db)
 
         assert result.success is True
         assert result.handles_extracted > 0
         assert result.messages_extracted > 0
 
-    def test_real_validation_passes(self, real_chat_db: Path, real_analysis_db: Path):
-        """Validation should pass with real data."""
-        run_etl(real_chat_db, real_analysis_db)
+    def test_real_validation_passes(self, real_chat_db_snapshot: Path, real_analysis_db: Path):
+        """Validation should pass with real data (snapshot)."""
+        run_etl(real_chat_db_snapshot, real_analysis_db)
 
-        validation = validate_etl(real_chat_db, real_analysis_db)
+        validation = validate_etl(real_chat_db_snapshot, real_analysis_db)
 
         # Print validation result for debugging
         print(str(validation))
 
         assert validation.passed is True
 
-    def test_real_incremental_etl(self, real_chat_db: Path, real_analysis_db: Path):
-        """Incremental ETL should work with real data."""
+    def test_real_incremental_etl(self, real_chat_db_snapshot: Path, real_analysis_db: Path):
+        """Incremental ETL should work with real data (snapshot)."""
         # First run
-        first = run_etl(real_chat_db, real_analysis_db)
+        first = run_etl(real_chat_db_snapshot, real_analysis_db)
         assert first.success is True
         assert first.is_incremental is False
 
-        # Second run
-        second = run_etl(real_chat_db, real_analysis_db)
+        # Second run (against same snapshot)
+        second = run_etl(real_chat_db_snapshot, real_analysis_db)
         assert second.success is True
         assert second.is_incremental is True
 
         # Second run should load fewer (ideally zero) new messages
         assert second.messages_loaded <= first.messages_loaded
 
-    def test_real_data_integrity(self, real_chat_db: Path, real_analysis_db: Path):
-        """Data integrity checks should pass with real data."""
-        run_etl(real_chat_db, real_analysis_db)
+    def test_real_data_integrity(self, real_chat_db_snapshot: Path, real_analysis_db: Path):
+        """Data integrity checks should pass with real data (snapshot)."""
+        run_etl(real_chat_db_snapshot, real_analysis_db)
 
         conn = sqlite3.connect(str(real_analysis_db))
         try:

@@ -1047,6 +1047,103 @@ def test_real_etl(real_chat_db, tmp_path):
 5. **Validate after ETL** - automated checks catch data quality issues
 6. **Test with fixtures and real data** - both synthetic and integration tests
 7. **Document design decisions** - in code docstrings and LEARNINGS.md
+8. **Use snapshots, not originals** - never access chat.db directly (see below)
+
+## Snapshot-First Strategy (Safety Pattern)
+
+### The Problem
+
+Even when using read-only mode (`?mode=ro`) to access Apple's databases, there are risks:
+
+1. **Accidents happen** - bugs, misconfigurations, or unexpected code paths could attempt writes
+2. **Lock contention** - accessing the live database competes with iMessage for locks
+3. **Consistency issues** - new messages arriving mid-ETL can cause inconsistent state
+4. **No reproducibility** - running ETL twice might yield different results
+
+### The Solution: Always Work from Snapshots
+
+**Never access the original chat.db directly during ETL processing.**
+
+Instead:
+1. Create a snapshot of chat.db using SQLite's backup API
+2. Store snapshots in a dedicated directory (`~/.imessage_analysis/snapshots/`)
+3. Run all ETL operations against the snapshot
+4. Refresh snapshots only when they exceed a configured age (default: 7 days)
+
+```
+Original chat.db          Snapshot Directory              analysis.db
+~/Library/Messages/       ~/.imessage_analysis/snapshots/
+                    
+┌─────────────┐           ┌──────────────────────┐       ┌─────────────┐
+│  chat.db    │──backup──►│chat_20250115_103045.db│──ETL──►│ analysis.db │
+│ (UNTOUCHED) │           │chat_20250108_091230.db│       │ (YOUR DATA) │
+└─────────────┘           └──────────────────────┘       └─────────────┘
+```
+
+### Implementation
+
+The snapshot module provides these key functions:
+
+```python
+# Get or create a snapshot (main entry point)
+snapshot_path = get_or_create_snapshot(
+    source_db_path=Path("~/Library/Messages/chat.db"),
+    snapshots_dir=Path("~/.imessage_analysis/snapshots"),
+    max_age_days=7,       # Create new if older than this
+    force_new=False,      # Force new snapshot even if recent one exists
+)
+
+# Check if refresh is needed
+needs_new = snapshot_needs_refresh(snapshots_dir, max_age_days=7)
+
+# Clean up old snapshots
+deleted = cleanup_old_snapshots(snapshots_dir, keep_count=3)
+```
+
+### Configuration
+
+```python
+from imessage_analysis.config import Config
+
+config = Config(
+    snapshots_dir="~/.imessage_analysis/snapshots",  # Where snapshots live
+    snapshot_max_age_days=7,                          # Refresh threshold
+)
+```
+
+### Benefits
+
+1. **Safety**: Original database is never touched, even accidentally
+2. **Consistency**: Analysis runs on a point-in-time copy
+3. **No lock contention**: Won't compete with iMessage for database access
+4. **Reproducibility**: Same snapshot = same analysis results
+5. **Defense in depth**: Multiple layers of protection
+
+### Testing with Snapshots
+
+Integration tests also use snapshots via the `real_chat_db_snapshot` fixture:
+
+```python
+@pytest.fixture
+def real_chat_db_snapshot(real_chat_db: Path, tmp_path: Path) -> Path:
+    """Create snapshot of real chat.db for safe testing."""
+    from imessage_analysis.snapshot import create_timestamped_snapshot
+    
+    result = create_timestamped_snapshot(real_chat_db, tmp_path / "snapshots")
+    return result.snapshot_path
+
+# Tests use the snapshot, not the original
+def test_etl(real_chat_db_snapshot: Path, analysis_db: Path):
+    result = run_etl(real_chat_db_snapshot, analysis_db)  # Safe!
+```
+
+### Key Takeaways
+
+1. **Never access Apple databases directly** - always via snapshot
+2. **Snapshot creation uses SQLite backup API** - handles WAL mode correctly
+3. **Configure max_age_days** - balance freshness vs. snapshot overhead
+4. **Clean up old snapshots** - don't let them accumulate indefinitely
+5. **Tests should use snapshots too** - consistency across dev and production
 
 ## Contacts Database (AddressBook) Integration
 
