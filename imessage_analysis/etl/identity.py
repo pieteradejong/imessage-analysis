@@ -76,7 +76,8 @@ def resolve_handle_to_person(
         cursor.execute(exact_query, (handle_normalized,))
         result = cursor.fetchone()
         if result:
-            return result[0]
+            person_id: str = result[0]
+            return person_id
 
     # Strategy 2: Fuzzy phone match (last 10 digits)
     if handle_type == "phone":
@@ -94,13 +95,14 @@ def resolve_handle_to_person(
             with closing(conn.cursor()) as cursor:
                 cursor.execute(fuzzy_query)
                 for row in cursor.fetchall():
-                    person_id, contact_normalized = row
+                    matched_person_id: str = row[0]
+                    contact_normalized: str = row[1]
                     contact_digits = _extract_digits(contact_normalized)
                     if len(contact_digits) >= 10 and contact_digits[-10:] == last_10:
                         logger.debug(
                             f"Fuzzy phone match: {handle_normalized} → {contact_normalized}"
                         )
-                        return person_id
+                        return matched_person_id
 
     return None
 

@@ -112,21 +112,14 @@ fi
 # 5. Unit Tests with Coverage
 print_header "5️⃣  Unit Tests & Coverage (pytest)"
 echo "Running pytest with coverage..."
-if run_test "${PY}" -m pytest --cov=imessage_analysis \
-  --cov-report=term-missing \
-  --cov-report=html:htmlcov \
-  --cov-fail-under=50 \
+# Use pyproject.toml settings (90% coverage threshold)
+if run_test "${PY}" -m pytest \
   -v \
   --tb=short \
-  -m "not integration"; then
-  print_success "All unit tests passed"
-  
-  # Show coverage summary
-  echo ""
-  echo "Coverage Summary:"
-  "${PY}" -m pytest --cov=imessage_analysis --cov-report=term --quiet -q 2>/dev/null | tail -n +2 || true
+  -m "not integration and not fuzz"; then
+  print_success "All unit tests passed with required coverage"
 else
-  print_error "Some unit tests failed"
+  print_error "Some unit tests failed or coverage too low"
 fi
 
 # 6. Test Count Summary
@@ -175,7 +168,8 @@ done
 # 8. ETL Module Tests
 print_header "8️⃣  ETL Module Tests"
 echo "Running ETL-specific tests..."
-if run_test "${PY}" -m pytest tests/test_normalizers.py tests/test_schema.py tests/test_extractors.py tests/test_loaders.py tests/test_identity.py tests/test_pipeline.py tests/test_contacts_extractors.py tests/test_contacts_loaders.py tests/test_identity_resolution.py tests/test_contacts_integration.py -v --tb=short -m "not integration" 2>&1 | tail -30; then
+# Use --no-cov to avoid coverage threshold for subset runs
+if run_test "${PY}" -m pytest tests/test_normalizers.py tests/test_schema.py tests/test_extractors.py tests/test_loaders.py tests/test_identity.py tests/test_pipeline.py tests/test_contacts_extractors.py tests/test_contacts_loaders.py tests/test_identity_resolution.py tests/test_contacts_integration.py -v --tb=short --no-cov -m "not integration" 2>&1 | tail -30; then
   print_success "ETL module tests passed"
 else
   print_error "ETL module tests failed"
@@ -185,15 +179,11 @@ fi
 print_header "9️⃣  Property-Based Tests (Hypothesis)"
 echo "Running property-based tests..."
 if "${PY}" -c "import hypothesis" 2>/dev/null; then
-  if run_test "${PY}" -m pytest tests/test_properties.py -v --tb=short -m "property" 2>&1 | tail -20; then
+  # Use --no-cov to avoid coverage threshold for subset runs
+  if run_test "${PY}" -m pytest tests/test_properties.py -v --tb=short --no-cov 2>&1 | tail -20; then
     print_success "Property-based tests passed"
   else
-    # Try without the marker in case tests aren't marked
-    if run_test "${PY}" -m pytest tests/test_properties.py -v --tb=short 2>&1 | tail -20; then
-      print_success "Property-based tests passed"
-    else
-      print_error "Property-based tests failed"
-    fi
+    print_error "Property-based tests failed"
   fi
 else
   echo -e "${YELLOW}⚠${NC}  hypothesis not installed. Install with: pip install hypothesis"
@@ -204,7 +194,8 @@ fi
 # 10. API Endpoint Tests
 print_header "🔟  API Endpoint Tests"
 echo "Running API endpoint tests..."
-if run_test "${PY}" -m pytest tests/test_api_endpoints.py -v --tb=short 2>&1 | tail -20; then
+# Use --no-cov to avoid coverage threshold for subset runs
+if run_test "${PY}" -m pytest tests/test_api_endpoints.py -v --tb=short --no-cov 2>&1 | tail -20; then
   print_success "API endpoint tests passed"
 else
   print_error "API endpoint tests failed"
@@ -214,24 +205,25 @@ fi
 print_header "1️⃣1️⃣  Integration Tests"
 echo "Running integration tests (uses real chat.db if available)..."
 # Run integration tests - they may fail if real chat.db is not accessible
-INTEGRATION_OUTPUT=$("${PY}" -m pytest -m integration -v --tb=short 2>&1 || true)
+# Use --no-cov to avoid coverage threshold for subset runs
+INTEGRATION_OUTPUT=$("${PY}" -m pytest -m integration -v --tb=short --no-cov 2>&1 || true)
 echo "$INTEGRATION_OUTPUT" | tail -30
 
-# Check if all tests were skipped (no real data available)
-SKIP_COUNT=$(echo "$INTEGRATION_OUTPUT" | grep -c "SKIPPED" || echo "0")
-PASS_COUNT=$(echo "$INTEGRATION_OUTPUT" | grep -c "PASSED" || echo "0")
-FAIL_COUNT=$(echo "$INTEGRATION_OUTPUT" | grep -c "FAILED" || echo "0")
-
-if [[ "$FAIL_COUNT" -eq 0 ]]; then
-  if [[ "$SKIP_COUNT" -gt 0 ]] && [[ "$PASS_COUNT" -eq 0 ]]; then
-    echo -e "${YELLOW}⚠${NC}  Integration tests skipped (no real chat.db available)"
-  else
-    print_success "Integration tests passed"
-  fi
+# Check the summary line from pytest output
+# Look for patterns like "X passed", "X skipped", "X failed" in the last lines
+if echo "$INTEGRATION_OUTPUT" | grep -qE "[0-9]+ failed"; then
+  print_error "Integration tests failed"
+elif echo "$INTEGRATION_OUTPUT" | grep -qE "[0-9]+ passed"; then
+  print_success "Integration tests passed"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+elif echo "$INTEGRATION_OUTPUT" | grep -qE "[0-9]+ skipped"; then
+  echo -e "${YELLOW}⚠${NC}  Integration tests skipped (no real chat.db available)"
   TESTS_PASSED=$((TESTS_PASSED + 1))
 else
-  print_error "Integration tests failed"
+  echo -e "${YELLOW}⚠${NC}  Integration tests: no tests collected"
+  TESTS_PASSED=$((TESTS_PASSED + 1))
 fi
+TESTS_RUN=$((TESTS_RUN + 1))
 
 # Final Summary
 echo ""

@@ -86,7 +86,8 @@ def load_messages(conn: sqlite3.Connection, messages: List[Message]) -> int:
     Load messages into fact_message table.
 
     Uses INSERT OR IGNORE to avoid duplicates - messages with existing
-    message_id will be skipped.
+    message_id will be skipped. Handle IDs that don't exist in dim_handle
+    are set to NULL to avoid foreign key violations.
 
     Args:
         conn: SQLite connection to analysis.db.
@@ -100,6 +101,11 @@ def load_messages(conn: sqlite3.Connection, messages: List[Message]) -> int:
 
     now = _now_iso()
 
+    # First, get the set of valid handle_ids from dim_handle
+    with closing(conn.cursor()) as cursor:
+        cursor.execute("SELECT handle_id FROM dim_handle;")
+        valid_handle_ids = {row[0] for row in cursor.fetchall()}
+
     query = """
         INSERT OR IGNORE INTO fact_message 
             (message_id, chat_id, date_utc, date_local, is_from_me, 
@@ -110,6 +116,11 @@ def load_messages(conn: sqlite3.Connection, messages: List[Message]) -> int:
     loaded = 0
     with closing(conn.cursor()) as cursor:
         for message in messages:
+            # Only use handle_id if it exists in dim_handle, otherwise NULL
+            handle_id = message.handle_id
+            if handle_id is not None and handle_id not in valid_handle_ids:
+                handle_id = None
+
             cursor.execute(
                 query,
                 (
@@ -118,7 +129,7 @@ def load_messages(conn: sqlite3.Connection, messages: List[Message]) -> int:
                     message.date_utc,
                     message.date_local,
                     1 if message.is_from_me else 0,
-                    message.handle_id,
+                    handle_id,
                     message.text,
                     now,
                 ),
