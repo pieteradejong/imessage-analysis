@@ -9,27 +9,36 @@ Run ./run_etl.sh first to populate analysis.db from your Apple databases.
 
 from __future__ import annotations
 
+import logging
 import os
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+
+from imessage_analysis.logger_config import setup_logging
+
+# Initialize logging for API
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
 def _get_analysis_db_path() -> Path:
     """Get the path to analysis.db."""
-    return Path(os.getenv(
-        "IMESSAGE_ANALYSIS_DB_PATH",
-        str(Path.home() / ".imessage_analysis" / "analysis.db")
-    ))
+    return Path(
+        os.getenv(
+            "IMESSAGE_ANALYSIS_DB_PATH", str(Path.home() / ".imessage_analysis" / "analysis.db")
+        )
+    )
 
 
 def _open_analysis_db() -> sqlite3.Connection:
     """
     Open analysis.db for reading.
-    
+
     Raises HTTPException if analysis.db doesn't exist.
     """
     path = _get_analysis_db_path()
@@ -40,7 +49,7 @@ def _open_analysis_db() -> sqlite3.Connection:
                 "error": "analysis.db not found",
                 "message": "Run ./run_etl.sh first to populate the analysis database",
                 "path": str(path),
-            }
+            },
         )
     return sqlite3.connect(str(path))
 
@@ -66,6 +75,30 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all HTTP requests with timing information."""
+    start_time = time.perf_counter()
+
+    # Log incoming request
+    logger.info(f"Request: {request.method} {request.url.path}")
+
+    try:
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            f"Response: {request.method} {request.url.path} "
+            f"status={response.status_code} duration={duration_ms:.1f}ms"
+        )
+        return response
+    except Exception as e:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.exception(
+            f"Error: {request.method} {request.url.path} " f"duration={duration_ms:.1f}ms"
+        )
+        raise
+
+
 @app.get("/health")
 def health() -> Dict[str, Any]:
     """Health check - also verifies analysis.db is accessible."""
@@ -83,22 +116,22 @@ def summary() -> Dict[str, Any]:
     conn = _open_analysis_db()
     try:
         cursor = conn.cursor()
-        
+
         cursor.execute("SELECT COUNT(*) FROM fact_message")
         total_messages = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT COUNT(DISTINCT chat_id) FROM fact_message")
         total_chats = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT COUNT(*) FROM dim_handle")
         total_handles = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT COUNT(*) FROM dim_person")
         total_persons = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT COUNT(*) FROM dim_person WHERE source = 'contacts'")
         contacts_synced = cursor.fetchone()[0]
-        
+
         return {
             "total_messages": total_messages,
             "total_chats": total_chats,
@@ -120,8 +153,9 @@ def latest(limit: int = Query(default=25, ge=1, le=500)) -> List[Dict[str, Any]]
     conn = _open_analysis_db()
     try:
         cursor = conn.cursor()
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             SELECT 
                 m.date_utc,
                 m.text,
@@ -136,8 +170,10 @@ def latest(limit: int = Query(default=25, ge=1, le=500)) -> List[Dict[str, Any]]
             LEFT JOIN dim_person p ON h.person_id = p.person_id
             ORDER BY m.date_utc DESC
             LIMIT ?
-        """, (limit,))
-        
+        """,
+            (limit,),
+        )
+
         messages = []
         for row in cursor.fetchall():
             # Build display name
@@ -149,16 +185,18 @@ def latest(limit: int = Query(default=25, ge=1, le=500)) -> List[Dict[str, Any]]
                     display_name = row[6]
                 elif row[7]:
                     display_name = row[7]
-            
-            messages.append({
-                "date": row[0],
-                "text": row[1],
-                "is_from_me": bool(row[2]),
-                "chat_identifier": str(row[3]) if row[3] else None,
-                "handle_id": row[4],
-                "display_name": display_name,
-            })
-        
+
+            messages.append(
+                {
+                    "date": row[0],
+                    "text": row[1],
+                    "is_from_me": bool(row[2]),
+                    "chat_identifier": str(row[3]) if row[3] else None,
+                    "handle_id": row[4],
+                    "display_name": display_name,
+                }
+            )
+
         return messages
     finally:
         conn.close()
@@ -170,8 +208,9 @@ def top_chats(limit: int = Query(default=50, ge=1, le=500)) -> List[Dict[str, An
     conn = _open_analysis_db()
     try:
         cursor = conn.cursor()
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             SELECT 
                 chat_id,
                 COUNT(*) as message_count
@@ -179,16 +218,20 @@ def top_chats(limit: int = Query(default=50, ge=1, le=500)) -> List[Dict[str, An
             GROUP BY chat_id
             ORDER BY message_count DESC
             LIMIT ?
-        """, (limit,))
-        
+        """,
+            (limit,),
+        )
+
         chats = []
         for row in cursor.fetchall():
-            chats.append({
-                "chat_identifier": str(row[0]),
-                "display_name": None,
-                "message_count": row[1],
-            })
-        
+            chats.append(
+                {
+                    "chat_identifier": str(row[0]),
+                    "display_name": None,
+                    "message_count": row[1],
+                }
+            )
+
         return chats
     finally:
         conn.close()
@@ -202,8 +245,9 @@ def contacts() -> List[Dict[str, Any]]:
     conn = _open_analysis_db()
     try:
         cursor = conn.cursor()
-        
-        cursor.execute("""
+
+        cursor.execute(
+            """
             SELECT 
                 h.handle_id,
                 h.value_raw,
@@ -224,10 +268,11 @@ def contacts() -> List[Dict[str, Any]]:
             LEFT JOIN fact_message m ON m.handle_id = h.handle_id
             GROUP BY h.handle_id
             ORDER BY last_message DESC NULLS LAST, message_count DESC
-        """)
-        
+        """
+        )
+
         rows = cursor.fetchall()
-        
+
         contacts_list = []
         for row in rows:
             # Build display name
@@ -239,30 +284,36 @@ def contacts() -> List[Dict[str, Any]]:
                     display_name = row[5]
                 elif row[6]:
                     display_name = row[6]
-            
-            contacts_list.append({
-                "handle_id": row[0],
-                "id": row[1],  # value_raw (phone/email)
-                "value_normalized": row[2],
-                "handle_type": row[3],
-                "person_id": row[4],
-                "first_name": row[5],
-                "last_name": row[6],
-                "display_name": display_name,
-                "person_source": row[8],
-                "message_count": row[9] or 0,
-                "sent_count": row[10] or 0,
-                "received_count": row[11] or 0,
-                "first_message": row[12],
-                "last_message": row[13],
-                # Compatibility fields
-                "rowid": row[0],
-                "service": "iMessage" if row[3] == "phone" else "Email" if row[3] == "email" else "Unknown",
-                "country": None,
-                "uncanonicalized_id": None,
-                "person_centric_id": row[4],
-            })
-        
+
+            contacts_list.append(
+                {
+                    "handle_id": row[0],
+                    "id": row[1],  # value_raw (phone/email)
+                    "value_normalized": row[2],
+                    "handle_type": row[3],
+                    "person_id": row[4],
+                    "first_name": row[5],
+                    "last_name": row[6],
+                    "display_name": display_name,
+                    "person_source": row[8],
+                    "message_count": row[9] or 0,
+                    "sent_count": row[10] or 0,
+                    "received_count": row[11] or 0,
+                    "first_message": row[12],
+                    "last_message": row[13],
+                    # Compatibility fields
+                    "rowid": row[0],
+                    "service": (
+                        "iMessage"
+                        if row[3] == "phone"
+                        else "Email" if row[3] == "email" else "Unknown"
+                    ),
+                    "country": None,
+                    "uncanonicalized_id": None,
+                    "person_centric_id": row[4],
+                }
+            )
+
         return contacts_list
     finally:
         conn.close()
@@ -274,9 +325,10 @@ def contact_detail(handle_id: str) -> Dict[str, Any]:
     conn = _open_analysis_db()
     try:
         cursor = conn.cursor()
-        
+
         # Find the handle
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT 
                 h.handle_id,
                 h.value_raw,
@@ -290,12 +342,14 @@ def contact_detail(handle_id: str) -> Dict[str, Any]:
             FROM dim_handle h
             LEFT JOIN dim_person p ON h.person_id = p.person_id
             WHERE h.value_raw = ? OR h.value_normalized = ?
-        """, (handle_id, handle_id))
-        
+        """,
+            (handle_id, handle_id),
+        )
+
         row = cursor.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail=f"Contact not found: {handle_id}")
-        
+
         # Build display name
         display_name = row[7]
         if not display_name:
@@ -305,9 +359,10 @@ def contact_detail(handle_id: str) -> Dict[str, Any]:
                 display_name = row[5]
             elif row[6]:
                 display_name = row[6]
-        
+
         # Get message stats
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT 
                 COUNT(*) as total,
                 SUM(CASE WHEN is_from_me = 1 THEN 1 ELSE 0 END) as from_me,
@@ -318,14 +373,16 @@ def contact_detail(handle_id: str) -> Dict[str, Any]:
                 MAX(date_utc) as last_message
             FROM fact_message
             WHERE handle_id = ?
-        """, (row[0],))
-        
+        """,
+            (row[0],),
+        )
+
         stats_row = cursor.fetchone()
-        
+
         total_messages = stats_row[0] or 0
         from_me_count = stats_row[1] or 0
         from_them_count = stats_row[2] or 0
-        
+
         return {
             "contact": {
                 "handle_id": row[0],
@@ -338,7 +395,9 @@ def contact_detail(handle_id: str) -> Dict[str, Any]:
                 "display_name": display_name,
                 "person_source": row[8],
                 "rowid": row[0],
-                "service": "iMessage" if row[3] == "phone" else "Email" if row[3] == "email" else "Unknown",
+                "service": (
+                    "iMessage" if row[3] == "phone" else "Email" if row[3] == "email" else "Unknown"
+                ),
                 "country": None,
                 "uncanonicalized_id": None,
                 "person_centric_id": row[4],
@@ -352,14 +411,18 @@ def contact_detail(handle_id: str) -> Dict[str, Any]:
                     "character_count": stats_row[3] or 0,
                     "first_message": stats_row[5] if from_me_count > 0 else None,
                     "last_message": stats_row[6] if from_me_count > 0 else None,
-                    "percentage": (from_me_count / total_messages * 100) if total_messages > 0 else 0,
+                    "percentage": (
+                        (from_me_count / total_messages * 100) if total_messages > 0 else 0
+                    ),
                 },
                 "from_them": {
                     "message_count": from_them_count,
                     "character_count": stats_row[4] or 0,
                     "first_message": stats_row[5] if from_them_count > 0 else None,
                     "last_message": stats_row[6] if from_them_count > 0 else None,
-                    "percentage": (from_them_count / total_messages * 100) if total_messages > 0 else 0,
+                    "percentage": (
+                        (from_them_count / total_messages * 100) if total_messages > 0 else 0
+                    ),
                 },
             },
             "chats": [],
@@ -372,11 +435,11 @@ def contact_detail(handle_id: str) -> Dict[str, Any]:
 def diagnostics() -> Dict[str, Any]:
     """
     Get diagnostic information about the analysis database.
-    
+
     Shows stats on contact enrichment, data quality, etc.
     """
     path = _get_analysis_db_path()
-    
+
     if not path.exists():
         return {
             "status": "not_initialized",
@@ -384,72 +447,81 @@ def diagnostics() -> Dict[str, Any]:
             "analysis_db_path": str(path),
             "message": "Run ./run_etl.sh to initialize analysis.db",
         }
-    
+
     conn = sqlite3.connect(str(path))
     try:
         cursor = conn.cursor()
-        
+
         # Basic counts
         cursor.execute("SELECT COUNT(*) FROM dim_handle")
         total_handles = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT COUNT(*) FROM dim_person")
         total_persons = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT COUNT(*) FROM fact_message")
         total_messages = cursor.fetchone()[0]
-        
+
         cursor.execute("SELECT COUNT(*) FROM dim_contact_method")
         total_contact_methods = cursor.fetchone()[0]
-        
+
         # Person source breakdown
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT source, COUNT(*) 
             FROM dim_person 
             GROUP BY source
-        """)
+        """
+        )
         person_sources = {row[0]: row[1] for row in cursor.fetchall()}
-        
+
         # Handles with names
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT COUNT(*) FROM dim_handle h
             JOIN dim_person p ON h.person_id = p.person_id
             WHERE p.display_name IS NOT NULL 
                OR p.first_name IS NOT NULL 
                OR p.last_name IS NOT NULL
-        """)
+        """
+        )
         handles_with_names = cursor.fetchone()[0]
-        
+
         # Handles linked to contacts (not inferred)
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT COUNT(*) FROM dim_handle h
             JOIN dim_person p ON h.person_id = p.person_id
             WHERE p.source = 'contacts'
-        """)
+        """
+        )
         handles_from_contacts = cursor.fetchone()[0]
-        
+
         # Handles with no person
         cursor.execute("SELECT COUNT(*) FROM dim_handle WHERE person_id IS NULL")
         handles_unlinked = cursor.fetchone()[0]
-        
+
         # Handle types
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT handle_type, COUNT(*) 
             FROM dim_handle 
             GROUP BY handle_type
-        """)
+        """
+        )
         handle_types = {row[0]: row[1] for row in cursor.fetchall()}
-        
+
         # Messages date range
         cursor.execute("SELECT MIN(date_utc), MAX(date_utc) FROM fact_message")
         date_row = cursor.fetchone()
-        
+
         # ETL state
         cursor.execute("SELECT key, value FROM etl_state")
         etl_state = {row[0]: row[1] for row in cursor.fetchall()}
-        
+
         # Top contacts by message count (for sampling)
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT 
                 h.value_raw,
                 p.display_name,
@@ -463,50 +535,53 @@ def diagnostics() -> Dict[str, Any]:
             GROUP BY h.handle_id
             ORDER BY msg_count DESC
             LIMIT 10
-        """)
+        """
+        )
         top_contacts = []
         for row in cursor.fetchall():
             name = row[1] or (f"{row[2]} {row[3]}" if row[2] and row[3] else row[2] or row[3])
-            top_contacts.append({
-                "id": row[0],
-                "display_name": name,
-                "source": row[4],
-                "message_count": row[5],
-                "has_name": name is not None,
-            })
-        
+            top_contacts.append(
+                {
+                    "id": row[0],
+                    "display_name": name,
+                    "source": row[4],
+                    "message_count": row[5],
+                    "has_name": name is not None,
+                }
+            )
+
         return {
             "status": "ok",
             "analysis_db_exists": True,
             "analysis_db_path": str(path),
-            
             "counts": {
                 "handles": total_handles,
                 "persons": total_persons,
                 "messages": total_messages,
                 "contact_methods": total_contact_methods,
             },
-            
             "enrichment": {
                 "handles_total": total_handles,
                 "handles_with_names": handles_with_names,
                 "handles_from_contacts": handles_from_contacts,
                 "handles_unlinked": handles_unlinked,
-                "name_coverage_percent": round(handles_with_names / total_handles * 100, 1) if total_handles > 0 else 0,
-                "contacts_coverage_percent": round(handles_from_contacts / total_handles * 100, 1) if total_handles > 0 else 0,
+                "name_coverage_percent": (
+                    round(handles_with_names / total_handles * 100, 1) if total_handles > 0 else 0
+                ),
+                "contacts_coverage_percent": (
+                    round(handles_from_contacts / total_handles * 100, 1)
+                    if total_handles > 0
+                    else 0
+                ),
             },
-            
             "person_sources": person_sources,
             "handle_types": handle_types,
-            
             "date_range": {
                 "first_message": date_row[0] if date_row else None,
                 "last_message": date_row[1] if date_row else None,
             },
-            
             "etl_state": etl_state,
             "top_contacts_sample": top_contacts,
-            
             # Profile pictures - not yet implemented
             "profile_pictures": {
                 "supported": False,

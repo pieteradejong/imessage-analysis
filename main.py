@@ -21,8 +21,8 @@ from imessage_analysis.logger_config import setup_logging
 from imessage_analysis.snapshot import create_timestamped_snapshot
 from imessage_analysis.utils import Colors
 
-# Setup logging
-setup_logging(level=logging.INFO)
+# Setup logging (uses LOG_LEVEL env var, defaults to INFO)
+setup_logging()
 
 
 def print_section(title: str) -> None:

@@ -1458,3 +1458,265 @@ npx shadcn@latest add dropdown-menu popover tooltip
 3. **cn() helper everywhere** - Clean conditional class composition
 4. **Component-per-feature structure** - Group by feature, not type
 5. **TypeScript for API types** - Define interfaces matching backend responses
+
+## Python Logging Best Practices
+
+### Why `dictConfig` Over `basicConfig`
+
+Python's `logging.basicConfig()` has a critical limitation: **it only works once**. If logging has already been configured (by any module), subsequent `basicConfig()` calls are silently ignored.
+
+```python
+# ❌ Problem with basicConfig
+import logging
+
+logging.basicConfig(level=logging.DEBUG)  # Works
+logging.basicConfig(level=logging.WARNING)  # Silently ignored!
+```
+
+**Solution: Use `logging.config.dictConfig()`**
+
+```python
+import logging.config
+
+config = {
+    "version": 1,
+    "disable_existing_loggers": False,  # Critical: don't clobber existing loggers
+    "formatters": {
+        "standard": {
+            "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "level": logging.INFO,
+            "formatter": "standard",
+            "stream": "ext://sys.stdout",
+        },
+    },
+    "root": {
+        "level": logging.INFO,
+        "handlers": ["console"],
+    },
+}
+
+logging.config.dictConfig(config)  # Can be called multiple times safely
+```
+
+**Key benefits of `dictConfig`:**
+- Can be called multiple times (reconfigures properly)
+- `disable_existing_loggers: False` preserves module loggers
+- Cleaner separation of configuration from code
+- Easier to load from JSON/YAML files if needed
+
+### Module-Level Loggers
+
+**Always use `__name__` for module loggers:**
+
+```python
+# At the top of each module (after imports)
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Usage throughout the module
+logger.info("Processing started")
+logger.warning("Configuration missing, using defaults")
+logger.error("Failed to connect")
+logger.exception("Unexpected error")  # Includes stack trace
+```
+
+**Why `__name__`:**
+- Creates hierarchical logger names (`imessage_analysis.etl.pipeline`)
+- Allows filtering by module in log output
+- Follows Python conventions
+- Enables per-module log level control if needed
+
+### Environment-Based Log Levels
+
+**Make log levels configurable via environment variables:**
+
+```python
+import logging
+import os
+
+def get_log_level() -> int:
+    """Get log level from LOG_LEVEL env var, defaulting to INFO."""
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, None)
+    
+    if level is None or not isinstance(level, int):
+        return logging.INFO  # Fall back to INFO for invalid values
+    
+    return level
+```
+
+**Usage:**
+```bash
+# Default (INFO)
+python main.py
+
+# Debug mode
+LOG_LEVEL=DEBUG python main.py
+
+# Production (less verbose)
+LOG_LEVEL=WARNING python main.py
+```
+
+**Valid levels:** DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+### API Request Logging with FastAPI
+
+**Add middleware to log all HTTP requests with timing:**
+
+```python
+import logging
+import time
+from fastapi import FastAPI, Request
+
+logger = logging.getLogger(__name__)
+app = FastAPI()
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all HTTP requests with timing information."""
+    start_time = time.perf_counter()
+    
+    logger.info(f"Request: {request.method} {request.url.path}")
+    
+    try:
+        response = await call_next(request)
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.info(
+            f"Response: {request.method} {request.url.path} "
+            f"status={response.status_code} duration={duration_ms:.1f}ms"
+        )
+        return response
+    except Exception as e:
+        duration_ms = (time.perf_counter() - start_time) * 1000
+        logger.exception(
+            f"Error: {request.method} {request.url.path} "
+            f"duration={duration_ms:.1f}ms"
+        )
+        raise
+```
+
+**Output example:**
+```
+2025-01-15 10:23:45 - imessage_analysis.api - INFO - Request: GET /summary
+2025-01-15 10:23:45 - imessage_analysis.api - INFO - Response: GET /summary status=200 duration=12.3ms
+```
+
+### Log Rotation for File Output
+
+**Use `RotatingFileHandler` to prevent unbounded log growth:**
+
+```python
+import logging.config
+
+config = {
+    "version": 1,
+    "handlers": {
+        "file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": "/var/log/myapp.log",
+            "maxBytes": 10_485_760,  # 10 MB
+            "backupCount": 5,        # Keep 5 old files
+            "formatter": "standard",
+        },
+    },
+    # ... rest of config
+}
+```
+
+**Result:** When `myapp.log` reaches 10 MB, it's renamed to `myapp.log.1`, and a new `myapp.log` is created. Old files roll over (`myapp.log.2`, etc.) up to `backupCount`.
+
+### Logging Best Practices Checklist
+
+| Practice | Why |
+|----------|-----|
+| Use `dictConfig` not `basicConfig` | Can be called multiple times, more robust |
+| Use `logging.getLogger(__name__)` | Hierarchical naming, per-module control |
+| Set `disable_existing_loggers: False` | Don't clobber module loggers |
+| Support `LOG_LEVEL` env var | Easy runtime configuration |
+| Use `logger.exception()` for errors | Automatically includes stack trace |
+| Use `RotatingFileHandler` for files | Prevents disk fill-up |
+| Log request timing in APIs | Essential for debugging performance |
+| Don't log sensitive data | Passwords, tokens, PII |
+
+### Example: Complete Logging Setup
+
+```python
+# logger_config.py
+import logging
+import logging.config
+import os
+from typing import Optional
+
+def get_log_level() -> int:
+    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    level = getattr(logging, level_name, None)
+    return level if isinstance(level, int) else logging.INFO
+
+def setup_logging(
+    level: Optional[int] = None,
+    log_file: Optional[str] = None,
+) -> None:
+    if level is None:
+        level = get_log_level()
+    
+    config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "standard": {
+                "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
+        },
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+                "level": level,
+                "formatter": "standard",
+                "stream": "ext://sys.stdout",
+            },
+        },
+        "root": {
+            "level": level,
+            "handlers": ["console"],
+        },
+    }
+    
+    if log_file:
+        config["handlers"]["file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "level": level,
+            "formatter": "standard",
+            "filename": log_file,
+            "maxBytes": 10_485_760,
+            "backupCount": 5,
+        }
+        config["root"]["handlers"].append("file")
+    
+    logging.config.dictConfig(config)
+```
+
+**Usage in application entry point:**
+```python
+# main.py or api.py
+from logger_config import setup_logging
+
+setup_logging()  # Uses LOG_LEVEL env var
+```
+
+### Key Logging Takeaways
+
+1. **Use `dictConfig`** - More robust than `basicConfig`, supports reconfiguration
+2. **Module loggers with `__name__`** - Hierarchical naming, conventional pattern
+3. **Environment-based levels** - `LOG_LEVEL=DEBUG` for easy runtime control
+4. **Log API requests with timing** - Essential for debugging and monitoring
+5. **Use `RotatingFileHandler`** - Prevents disk fill-up in production
+6. **`logger.exception()` for errors** - Automatically captures stack traces
+7. **`disable_existing_loggers: False`** - Critical for module loggers to work
