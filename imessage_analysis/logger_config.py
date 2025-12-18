@@ -40,7 +40,7 @@ def get_log_level() -> int:
         # Invalid level name, fall back to INFO
         return logging.INFO
 
-    return level
+    return int(level)
 
 
 def setup_logging(

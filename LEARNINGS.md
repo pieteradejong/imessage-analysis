@@ -1720,3 +1720,141 @@ setup_logging()  # Uses LOG_LEVEL env var
 5. **Use `RotatingFileHandler`** - Prevents disk fill-up in production
 6. **`logger.exception()` for errors** - Automatically captures stack traces
 7. **`disable_existing_loggers: False`** - Critical for module loggers to work
+
+## Test Maintenance & Coverage
+
+### Tests Break When APIs Change
+
+When you refactor a module's internal structure, tests that mock internal functions will break:
+
+**Common failure pattern:**
+```python
+# ❌ Old test - patches function that no longer exists
+@patch("imessage_analysis.api._open_db")  # Function was renamed!
+def test_summary(self, mock_open_db):
+    ...
+
+# Error: AttributeError: module 'imessage_analysis.api' does not have attribute '_open_db'
+```
+
+**Solution:** Update patch targets to match new function names:
+```python
+# ✅ Fixed test - patches the renamed function
+@patch("imessage_analysis.api._open_analysis_db")  # New name
+def test_summary(self, mock_open_db):
+    ...
+```
+
+**Key insight:** When refactoring, search tests for patches against the changed module:
+```bash
+rg "patch.*api\." tests/  # Find all patches to api module
+```
+
+### Mock Data Must Match Tuple Structure
+
+When mocking database queries, the mock data must have the **exact number of elements** the code expects:
+
+**Common failure pattern:**
+```python
+# ❌ Function accesses row[6] and row[7], but mock only has 6 elements
+mock_db.execute_query.return_value = [
+    (1, "+14155551234", "US", "iMessage", None, None),  # Only 6 elements!
+]
+
+# Error: IndexError: tuple index out of range
+```
+
+**Solution:** Count the indices accessed in the function and provide all elements:
+```python
+# ✅ All 8 elements provided
+mock_db.execute_query.return_value = [
+    (1, "+14155551234", "US", "iMessage", None, None, 150, "John Doe"),
+    # ^0  ^1            ^2    ^3         ^4    ^5    ^6   ^7
+]
+```
+
+**Best practice:** When writing tests, look at the function being tested and count how many tuple indices it accesses.
+
+### Boosting Coverage Quickly
+
+When coverage falls below threshold (e.g., 90%), identify the biggest gaps:
+
+**Check the coverage report:**
+```
+Name                       Stmts   Miss  Cover   Missing
+--------------------------------------------------------
+imessage_analysis/api.py     166     89    46%   44-54, 245-319...
+imessage_analysis/analysis.py 89     31    65%   204-221, 235-286...
+```
+
+**Target the modules with lowest coverage and highest statement count:**
+- `api.py` at 46% with 89 missing statements = biggest opportunity
+- Adding tests for 3 untested endpoints can add ~75 covered statements
+
+**Quick wins:**
+1. Find untested endpoints/functions in coverage report
+2. Add basic "happy path" tests (function returns expected structure)
+3. Add "not found" / error case tests
+4. Add tests for edge cases (empty results, missing fields)
+
+**Example: Adding endpoint tests boosted coverage from 87% to 94%:**
+```python
+class TestContactsEndpoint:
+    def test_contacts_returns_list(self, ...):
+        """Basic happy path test."""
+        
+    def test_contacts_structure(self, ...):
+        """Verify response has expected fields."""
+        
+    def test_contacts_display_name_fallback(self, ...):
+        """Test edge case: missing display_name."""
+        
+    def test_contacts_empty_list(self, ...):
+        """Test edge case: no contacts."""
+        
+    def test_contacts_closes_connection(self, ...):
+        """Verify cleanup happens."""
+```
+
+### mypy Catches Subtle Type Issues
+
+Type checking can find issues that tests might miss:
+
+**Example: Returning `Any` when `int` is declared:**
+```python
+def get_log_level() -> int:
+    level = getattr(logging, level_name, None)  # Returns Any
+    if level is None or not isinstance(level, int):
+        return logging.INFO
+    return level  # ❌ mypy error: Returning Any from function declared to return "int"
+```
+
+**Fix: Explicit cast:**
+```python
+    return int(level)  # ✅ Explicit int() satisfies mypy
+```
+
+**Run mypy before committing:**
+```bash
+mypy imessage_analysis/
+```
+
+### Test Coverage Checklist
+
+| Task | Command |
+|------|---------|
+| Run full test suite | `./test.sh` |
+| Check coverage report | `open htmlcov/index.html` |
+| Run specific test file | `pytest tests/test_api.py -v` |
+| Run with coverage for one file | `pytest tests/test_api.py --cov=imessage_analysis.api` |
+| Find patches in tests | `rg "patch.*module_name" tests/` |
+| Format code after changes | `black tests/` |
+
+### Key Test Maintenance Takeaways
+
+1. **Update patches when renaming functions** - Search for `patch("module.old_name")`
+2. **Mock tuples must match accessed indices** - Count `row[N]` in the function
+3. **Target low-coverage modules first** - Biggest gains for least effort
+4. **Run mypy to catch type issues** - Finds bugs tests might miss
+5. **Format with black after changes** - Keeps test suite passing
+6. **Test happy path + edge cases** - Empty results, missing fields, errors

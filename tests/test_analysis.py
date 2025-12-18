@@ -15,6 +15,9 @@ from imessage_analysis.analysis import (
     get_chat_analysis,
     get_all_contacts_data,
     get_database_summary,
+    get_contact_detail,
+    get_contact_stats,
+    get_contact_chats_data,
 )
 
 
@@ -184,7 +187,7 @@ class TestGetAllContactsData:
     def test_contact_structure(self, mock_db):
         """Each contact should have expected keys."""
         mock_db.execute_query.return_value = [
-            (1, "+14155551234", "US", "iMessage", None, None),
+            (1, "+14155551234", "US", "iMessage", None, None, 150, "John Doe"),
         ]
         result = get_all_contacts_data(mock_db)
 
@@ -196,13 +199,15 @@ class TestGetAllContactsData:
         assert "service" in contact
         assert "uncanonicalized_id" in contact
         assert "person_centric_id" in contact
+        assert "message_count" in contact
+        assert "display_name" in contact
 
     def test_multiple_contacts(self, mock_db):
         """Should handle multiple contacts."""
         mock_db.execute_query.return_value = [
-            (1, "+14155551234", "US", "iMessage", None, None),
-            (2, "user@example.com", None, "iMessage", None, None),
-            (3, "+442071234567", "GB", "iMessage", None, None),
+            (1, "+14155551234", "US", "iMessage", None, None, 150, "John Doe"),
+            (2, "user@example.com", None, "iMessage", None, None, 50, "Jane Smith"),
+            (3, "+442071234567", "GB", "iMessage", None, None, 200, "Bob Wilson"),
         ]
         result = get_all_contacts_data(mock_db)
         assert len(result) == 3
@@ -270,3 +275,163 @@ class TestGetDatabaseSummary:
         result = get_database_summary(mock_db)
 
         assert result["total_messages"] == 0
+
+
+class TestGetContactDetail:
+    """Tests for get_contact_detail function."""
+
+    def test_returns_contact_when_found(self, mock_db):
+        """Should return contact dictionary when found."""
+        mock_db.execute_query.return_value = [
+            (1, "+14155551234", "US", "iMessage", None, "person_123"),
+        ]
+        result = get_contact_detail(mock_db, "+14155551234")
+
+        assert result is not None
+        assert result["id"] == "+14155551234"
+        assert result["rowid"] == 1
+        assert result["country"] == "US"
+        assert result["service"] == "iMessage"
+
+    def test_returns_none_when_not_found(self, mock_db):
+        """Should return None when contact not found."""
+        mock_db.execute_query.return_value = []
+        result = get_contact_detail(mock_db, "unknown")
+
+        assert result is None
+
+    def test_contact_structure(self, mock_db):
+        """Contact should have expected keys."""
+        mock_db.execute_query.return_value = [
+            (1, "+14155551234", "US", "iMessage", "raw_id", "person_123"),
+        ]
+        result = get_contact_detail(mock_db, "+14155551234")
+
+        assert "rowid" in result
+        assert "id" in result
+        assert "country" in result
+        assert "service" in result
+        assert "uncanonicalized_id" in result
+        assert "person_centric_id" in result
+
+
+class TestGetContactStats:
+    """Tests for get_contact_stats function."""
+
+    def test_returns_dict(self, mock_db):
+        """Should return a dictionary."""
+        mock_db.execute_query.return_value = []
+        result = get_contact_stats(mock_db, "+14155551234")
+        assert isinstance(result, dict)
+
+    def test_stats_structure(self, mock_db):
+        """Stats should have expected structure."""
+        mock_db.execute_query.return_value = []
+        result = get_contact_stats(mock_db, "+14155551234")
+
+        assert "handle_id" in result
+        assert "from_me" in result
+        assert "from_them" in result
+        assert "total_messages" in result
+        assert "total_characters" in result
+
+    def test_from_me_stats(self, mock_db):
+        """Should populate from_me statistics."""
+        # row format: message_count, character_count, is_from_me, first_message, last_message
+        mock_db.execute_query.return_value = [
+            (100, 5000, 1, "2024-01-01", "2024-01-15"),
+        ]
+        result = get_contact_stats(mock_db, "+14155551234")
+
+        assert result["from_me"]["message_count"] == 100
+        assert result["from_me"]["character_count"] == 5000
+        assert result["from_me"]["first_message"] == "2024-01-01"
+        assert result["from_me"]["last_message"] == "2024-01-15"
+
+    def test_from_them_stats(self, mock_db):
+        """Should populate from_them statistics."""
+        mock_db.execute_query.return_value = [
+            (50, 2500, 0, "2024-01-02", "2024-01-14"),
+        ]
+        result = get_contact_stats(mock_db, "+14155551234")
+
+        assert result["from_them"]["message_count"] == 50
+        assert result["from_them"]["character_count"] == 2500
+
+    def test_both_directions(self, mock_db):
+        """Should handle both from_me and from_them."""
+        mock_db.execute_query.return_value = [
+            (60, 3000, 1, "2024-01-01", "2024-01-15"),  # from_me
+            (40, 2000, 0, "2024-01-02", "2024-01-14"),  # from_them
+        ]
+        result = get_contact_stats(mock_db, "+14155551234")
+
+        assert result["from_me"]["message_count"] == 60
+        assert result["from_them"]["message_count"] == 40
+        assert result["total_messages"] == 100
+        assert result["total_characters"] == 5000
+
+    def test_percentage_calculation(self, mock_db):
+        """Should calculate percentages correctly."""
+        mock_db.execute_query.return_value = [
+            (75, 3750, 1, "2024-01-01", "2024-01-15"),
+            (25, 1250, 0, "2024-01-02", "2024-01-14"),
+        ]
+        result = get_contact_stats(mock_db, "+14155551234")
+
+        assert result["from_me"]["percentage"] == 75.0
+        assert result["from_them"]["percentage"] == 25.0
+
+    def test_empty_stats(self, mock_db):
+        """Should handle empty query result."""
+        mock_db.execute_query.return_value = []
+        result = get_contact_stats(mock_db, "+14155551234")
+
+        assert result["total_messages"] == 0
+        assert result["total_characters"] == 0
+        assert result["from_me"]["message_count"] == 0
+        assert result["from_them"]["message_count"] == 0
+
+
+class TestGetContactChatsData:
+    """Tests for get_contact_chats_data function."""
+
+    def test_returns_list(self, mock_db):
+        """Should return a list of chats."""
+        mock_db.execute_query.return_value = []
+        result = get_contact_chats_data(mock_db, "+14155551234")
+        assert isinstance(result, list)
+
+    def test_chat_structure(self, mock_db):
+        """Each chat should have expected keys."""
+        mock_db.execute_query.return_value = [
+            ("chat_123", "Family Chat", 150),
+        ]
+        result = get_contact_chats_data(mock_db, "+14155551234")
+
+        assert len(result) == 1
+        chat = result[0]
+        assert "chat_identifier" in chat
+        assert "display_name" in chat
+        assert "message_count" in chat
+
+    def test_multiple_chats(self, mock_db):
+        """Should handle multiple chats."""
+        mock_db.execute_query.return_value = [
+            ("chat_1", "Family", 150),
+            ("chat_2", "Work", 200),
+            ("chat_3", None, 50),
+        ]
+        result = get_contact_chats_data(mock_db, "+14155551234")
+
+        assert len(result) == 3
+        assert result[0]["chat_identifier"] == "chat_1"
+        assert result[0]["message_count"] == 150
+        assert result[2]["display_name"] is None
+
+    def test_empty_result(self, mock_db):
+        """Should handle empty query result."""
+        mock_db.execute_query.return_value = []
+        result = get_contact_chats_data(mock_db, "+14155551234")
+
+        assert result == []
