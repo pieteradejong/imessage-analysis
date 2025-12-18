@@ -79,21 +79,31 @@ def table_creation_query(table_name: str) -> str:
 
 def get_all_contacts() -> str:
     """
-    Get query to retrieve all contacts (handles).
+    Get query to retrieve all contacts (handles) with message counts and display names.
 
     Returns:
         SQL query string.
     """
     return """
         SELECT 
-            ROWID,
-            id,
-            country,
-            service,
-            uncanonicalized_id,
-            person_centric_id
-        FROM handle
-        ORDER BY id;
+            h.ROWID,
+            h.id,
+            h.country,
+            h.service,
+            h.uncanonicalized_id,
+            h.person_centric_id,
+            COUNT(DISTINCT m.ROWID) as message_count,
+            (
+                SELECT c.display_name 
+                FROM chat c
+                JOIN chat_handle_join chj ON c.ROWID = chj.chat_id
+                WHERE chj.handle_id = h.ROWID AND c.display_name IS NOT NULL AND c.display_name != ''
+                LIMIT 1
+            ) as display_name
+        FROM handle h
+        LEFT JOIN message m ON m.handle_id = h.ROWID
+        GROUP BY h.ROWID
+        ORDER BY message_count DESC, h.id;
     """
 
 

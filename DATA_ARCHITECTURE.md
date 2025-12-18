@@ -1,4 +1,4 @@
-# Option B: Local Data Engineering Architecture for iMessage Analysis
+# Local Data Engineering Architecture for iMessage Analysis
 
 This document describes a **clean, robust, local-first data architecture** for an iMessage analysis app that consumes **two Apple-managed databases**:
 
@@ -13,20 +13,22 @@ and produces a **third database you own** (`analysis.db`) that acts as a stable 
 
 ```mermaid
 graph TB
-    subgraph Frontend["Frontend (React)"]
+    subgraph Frontend["Frontend (React + shadcn/ui)"]
         UI[React App]
         API_Client[api.ts]
     end
     
     subgraph Backend["Backend (Python)"]
         FastAPI[FastAPI Server]
-        Analysis[analysis.py]
-        ETL[ETL Pipeline]
     end
     
     subgraph Data["Data Layer"]
-        Snapshot[Snapshot Manager]
         AnalysisDB[(analysis.db)]
+    end
+    
+    subgraph ETL["ETL Pipeline (run.sh)"]
+        Snapshot[Snapshot Manager]
+        ETLProcess[ETL Process]
     end
     
     subgraph Apple["Apple Databases (Read-Only)"]
@@ -36,13 +38,15 @@ graph TB
     
     UI --> API_Client
     API_Client --> FastAPI
-    FastAPI --> Analysis
-    Analysis --> AnalysisDB
-    ETL --> Snapshot
+    FastAPI -->|"ONLY reads"| AnalysisDB
+    
+    ETLProcess --> Snapshot
     Snapshot --> ChatDB
-    ETL --> AnalysisDB
-    ETL -.-> Contacts
+    ETLProcess --> AnalysisDB
+    ETLProcess -.-> Contacts
 ```
+
+**Key architectural principle:** The API server ONLY reads from `analysis.db`. It never touches Apple databases directly. This separation provides security, simplicity, and testability.
 
 ---
 
@@ -413,7 +417,54 @@ Old snapshots can be cleaned up automatically (keep_count=3 by default).
 
 ---
 
-## 9. Refresh / Incremental Update Strategy
+## 9. API Architecture (Security Boundary)
+
+**The API server NEVER accesses Apple databases directly.**
+
+This is a deliberate architectural decision that provides defense in depth.
+
+### Security Boundary Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     SECURITY BOUNDARY                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   Apple DBs ──► ETL ──► analysis.db ──► API ──► Frontend        │
+│   (offline)            (your data)     (read-only)               │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why This Matters
+
+1. **Defense in depth**: Even if the API has a bug, it can't corrupt Apple's data
+2. **Clear separation**: ETL is the only code that touches source databases
+3. **Simpler API**: No snapshot logic, no permission checks, just reads
+4. **Testable**: API can be tested with a synthetic analysis.db
+5. **Faster startup**: No ETL checks on every API request
+
+### Implementation
+
+- API returns HTTP 503 if `analysis.db` doesn't exist
+- All endpoints query `analysis.db` exclusively
+- `/diagnostics` endpoint reports database health and enrichment stats
+- `run.sh` handles ETL automatically before starting the API
+
+### What the API Provides
+
+| Endpoint | Purpose |
+|----------|---------|
+| `/summary` | Database counts (messages, chats, handles, persons) |
+| `/latest` | Recent messages with sender info |
+| `/top_chats` | Most active conversations |
+| `/contacts` | All contacts sorted by recency |
+| `/contacts/{id}` | Detailed contact view with stats |
+| `/diagnostics` | Database health and enrichment metrics |
+
+---
+
+## 10. Refresh / Incremental Update Strategy
 
 You should **never rebuild everything**.
 
@@ -435,7 +486,7 @@ This keeps startup fast even with large histories.
 
 ---
 
-## 10. Why This Is the Right Tradeoff
+## 11. Why This Is the Right Tradeoff
 
 This architecture gives you:
 
@@ -448,7 +499,7 @@ You're doing **just enough data engineering** to stay sane.
 
 ---
 
-## 11. Mental Model to Keep
+## 12. Mental Model to Keep
 
 * Apple DBs = undocumented external APIs
 * Contacts DB = object graph, not analytics store
@@ -458,7 +509,7 @@ You're doing **just enough data engineering** to stay sane.
 
 ---
 
-## 12. Next Questions (Intentionally Deferred)
+## 13. Next Questions (Intentionally Deferred)
 
 * What *additional* signals from Contacts are worth extracting?
 * Can identity + conversations be modeled as graphs?

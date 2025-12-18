@@ -291,11 +291,18 @@ Create consistent shell scripts for common operations:
 - Install dependencies (editable + dev extras)
 - Install frontend dependencies if present
 
-**`run.sh`** - Run development servers:
-- Start backend (FastAPI/Uvicorn)
-- Start frontend (Vite/React)
-- Run both concurrently
+**`run.sh`** - Single entry point for everything:
+- Checks prerequisites (venv, npm, frontend node_modules)
+- Checks if `analysis.db` exists and is fresh (< 7 days old)
+- Auto-runs ETL if database is missing, empty, or stale
+- Handles Full Disk Access checks for Apple databases
+- Starts backend (FastAPI/Uvicorn) and frontend (Vite/React) concurrently
 - Handle cleanup on exit (Ctrl+C)
+
+**No separate ETL script** - `run.sh` handles everything:
+```bash
+./run.sh  # That's it. Does ETL if needed, then starts app.
+```
 
 **`test.sh`** - Run quality checks:
 - Code formatting (`black --check`)
@@ -1312,3 +1319,142 @@ After ETL with contacts, additional validation:
 4. **Set source='contacts'** vs 'inferred' - Track provenance
 5. **Test with mock databases** - Create fixtures with Core Data schema
 6. **Validate contact loading** - Check links and resolution rates
+
+## API Security Architecture
+
+### The Problem with Direct Database Access
+
+Even with read-only mode (`?mode=ro`), having the API access `chat.db` directly creates risks:
+- Code paths that could accidentally attempt writes
+- Lock contention with iMessage
+- Complexity in handling missing/stale snapshots
+- Harder to test (need real `chat.db` or complex mocks)
+- Every API request potentially involves snapshot logic
+
+### The Solution: API Only Reads analysis.db
+
+**The API server has ONE job: read from `analysis.db`.**
+
+```python
+# api.py - The ONLY database the API touches
+def _open_analysis_db() -> sqlite3.Connection:
+    path = Path.home() / ".imessage_analysis" / "analysis.db"
+    if not path.exists():
+        raise HTTPException(503, "Run ./run.sh to initialize")
+    return sqlite3.connect(str(path))
+```
+
+### Benefits
+
+1. **Simpler code**: No snapshot logic in API
+2. **Faster startup**: No ETL checks on every request
+3. **Easier testing**: Just create a test `analysis.db`
+4. **Clear responsibility**: ETL handles Apple DBs, API handles `analysis.db`
+5. **Defense in depth**: Even bugs in API can't touch original data
+
+### The Diagnostics Endpoint
+
+`/diagnostics` provides visibility into data quality:
+- Contact enrichment stats (% with names)
+- Person source breakdown (contacts vs inferred)
+- Handle type breakdown (phone vs email)
+- ETL state (last sync timestamps)
+- Message date range
+- Top contacts sample with enrichment status
+
+**Example response structure:**
+```json
+{
+  "status": "healthy",
+  "counts": {"messages": 50000, "persons": 200, "handles": 350},
+  "enrichment": {"with_name": 45, "name_percentage": 22.5},
+  "person_sources": {"contacts": 45, "inferred": 155}
+}
+```
+
+## Frontend Architecture (shadcn/ui)
+
+### Component Library Choice
+
+We use **shadcn/ui** - a collection of reusable components built on:
+- **Radix UI** - Accessible, unstyled primitives
+- **Tailwind CSS** - Utility-first styling
+- **TypeScript** - Full type safety
+
+### Why shadcn/ui (not a full component library like MUI or Chakra)
+
+1. **Copy-paste, not dependency**: Components live in your codebase (`src/components/ui/`)
+2. **Fully customizable**: Modify any component directly
+3. **No version lock-in**: Update components individually
+4. **Accessible by default**: Built on Radix primitives
+5. **Smaller bundle**: Only include what you use
+
+### Component Structure
+
+```
+frontend/src/
+├── components/
+│   ├── ui/           # shadcn components (button, card, table, tabs, etc.)
+│   ├── layout/       # Header, navigation
+│   ├── contacts/     # ContactsTable, ContactDetail
+│   ├── latest/       # MessageCard
+│   ├── overview/     # SummaryCards, TopChatsTable
+│   └── diagnostics/  # DiagnosticsPanel
+├── lib/utils.ts      # cn() helper for class merging
+└── index.css         # Tailwind + CSS variables for theming
+```
+
+### Key Patterns
+
+**Tailwind + CSS Variables for theming:**
+```css
+/* index.css */
+:root {
+  --primary: 221.2 83.2% 53.3%;
+  --background: 0 0% 100%;
+  --card: 0 0% 100%;
+  --border: 214.3 31.8% 91.4%;
+}
+
+.dark {
+  --primary: 217.2 91.2% 59.8%;
+  --background: 222.2 84% 4.9%;
+}
+```
+
+**cn() helper for conditional classes:**
+```tsx
+import { cn } from "@/lib/utils";
+
+// Combines clsx + tailwind-merge for clean class composition
+<div className={cn(
+  "base-class px-4 py-2",
+  isActive && "bg-primary text-white",
+  className  // Allow overrides from props
+)} />
+```
+
+**Path aliases for clean imports:**
+```typescript
+// vite.config.ts + tsconfig.json
+// Instead of: import { Button } from "../../../components/ui/button"
+import { Button } from "@/components/ui/button";
+```
+
+### Adding New shadcn Components
+
+```bash
+# Add a component (copies to src/components/ui/)
+npx shadcn@latest add dialog
+
+# Add multiple components
+npx shadcn@latest add dropdown-menu popover tooltip
+```
+
+### Key Frontend Takeaways
+
+1. **Use shadcn/ui for consistency** - Pre-built, accessible, customizable
+2. **CSS variables for theming** - Easy dark mode, consistent colors
+3. **cn() helper everywhere** - Clean conditional class composition
+4. **Component-per-feature structure** - Group by feature, not type
+5. **TypeScript for API types** - Define interfaces matching backend responses

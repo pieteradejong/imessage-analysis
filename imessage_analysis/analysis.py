@@ -130,13 +130,13 @@ def get_chat_analysis(db: DatabaseConnection, chat_identifier: str) -> Dict[str,
 
 def get_all_contacts_data(db: DatabaseConnection) -> List[Dict[str, Any]]:
     """
-    Get all contacts (handles) from the database.
+    Get all contacts (handles) from the database with message counts and display names.
 
     Args:
         db: Database connection.
 
     Returns:
-        List of contact dictionaries.
+        List of contact dictionaries sorted by message count.
     """
     query = get_all_contacts()
     rows = db.execute_query(query)
@@ -151,6 +151,8 @@ def get_all_contacts_data(db: DatabaseConnection) -> List[Dict[str, Any]]:
                 "service": row[3],
                 "uncanonicalized_id": row[4],
                 "person_centric_id": row[5],
+                "message_count": row[6],
+                "display_name": row[7],
             }
         )
 

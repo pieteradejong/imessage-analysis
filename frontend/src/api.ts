@@ -29,6 +29,20 @@ export type Contact = {
   service: string;
   uncanonicalized_id: string | null;
   person_centric_id: string | null;
+  message_count: number;
+  display_name: string | null;
+  // Enriched fields from analysis.db
+  handle_id?: number;
+  value_normalized?: string;
+  handle_type?: string;
+  person_id?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  person_source?: string | null;
+  sent_count?: number;
+  received_count?: number;
+  first_message?: string | null;
+  last_message?: string | null;
 };
 
 export type ContactStats = {
@@ -96,5 +110,48 @@ export function fetchContacts(): Promise<Contact[]> {
 
 export function fetchContactDetail(handleId: string): Promise<ContactDetail> {
   return getJson<ContactDetail>(`/contacts/${encodeURIComponent(handleId)}`);
+}
+
+export type DiagnosticsData = {
+  status: string;
+  analysis_db_exists: boolean;
+  analysis_db_path: string;
+  message?: string;
+  counts?: {
+    handles: number;
+    persons: number;
+    messages: number;
+    contact_methods: number;
+  };
+  enrichment?: {
+    handles_total: number;
+    handles_with_names: number;
+    handles_from_contacts: number;
+    handles_unlinked: number;
+    name_coverage_percent: number;
+    contacts_coverage_percent: number;
+  };
+  person_sources?: Record<string, number>;
+  handle_types?: Record<string, number>;
+  date_range?: {
+    first_message: string | null;
+    last_message: string | null;
+  };
+  etl_state?: Record<string, string>;
+  top_contacts_sample?: Array<{
+    id: string;
+    display_name: string | null;
+    source: string | null;
+    message_count: number;
+    has_name: boolean;
+  }>;
+  profile_pictures?: {
+    supported: boolean;
+    message: string;
+  };
+};
+
+export function fetchDiagnostics(): Promise<DiagnosticsData> {
+  return getJson<DiagnosticsData>("/diagnostics");
 }
 
