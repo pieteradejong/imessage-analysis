@@ -31,6 +31,8 @@ dev = [
     "black>=22.0.0",
     "mypy>=0.991",
     "bandit>=1.7.0",
+    "hypothesis>=6.0.0",
+    "httpx>=0.25.0",
 ]
 
 [project.scripts]
@@ -58,12 +60,19 @@ addopts = [
     "--cov=imessage_analysis",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
-    "--cov-fail-under=50",
+    "--cov-fail-under=90",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration tests",
     "unit: marks tests as unit tests",
+    "property: marks property-based tests",
+    "fuzz: marks fuzz tests (longer running)",
 ]
+
+[tool.hypothesis]
+default = { max_examples = 100 }
+ci = { max_examples = 500 }
+fuzz = { max_examples = 5000 }
 
 

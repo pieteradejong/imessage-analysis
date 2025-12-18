@@ -181,8 +181,37 @@ else
   print_error "ETL module tests failed"
 fi
 
-# 9. Integration Tests (optional, may use real data)
-print_header "9️⃣  Integration Tests"
+# 9. Property-Based Tests (Hypothesis)
+print_header "9️⃣  Property-Based Tests (Hypothesis)"
+echo "Running property-based tests..."
+if "${PY}" -c "import hypothesis" 2>/dev/null; then
+  if run_test "${PY}" -m pytest tests/test_properties.py -v --tb=short -m "property" 2>&1 | tail -20; then
+    print_success "Property-based tests passed"
+  else
+    # Try without the marker in case tests aren't marked
+    if run_test "${PY}" -m pytest tests/test_properties.py -v --tb=short 2>&1 | tail -20; then
+      print_success "Property-based tests passed"
+    else
+      print_error "Property-based tests failed"
+    fi
+  fi
+else
+  echo -e "${YELLOW}⚠${NC}  hypothesis not installed. Install with: pip install hypothesis"
+  TESTS_RUN=$((TESTS_RUN + 1))
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+fi
+
+# 10. API Endpoint Tests
+print_header "🔟  API Endpoint Tests"
+echo "Running API endpoint tests..."
+if run_test "${PY}" -m pytest tests/test_api_endpoints.py -v --tb=short 2>&1 | tail -20; then
+  print_success "API endpoint tests passed"
+else
+  print_error "API endpoint tests failed"
+fi
+
+# 11. Integration Tests (optional, may use real data)
+print_header "1️⃣1️⃣  Integration Tests"
 echo "Running integration tests (uses real chat.db if available)..."
 # Run integration tests - they may fail if real chat.db is not accessible
 INTEGRATION_OUTPUT=$("${PY}" -m pytest -m integration -v --tb=short 2>&1 || true)

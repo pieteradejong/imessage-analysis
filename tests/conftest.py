@@ -287,18 +287,27 @@ def populated_analysis_db(empty_analysis_db: Path) -> Path:
 @pytest.fixture
 def real_chat_db() -> Optional[Path]:
     """
-    Return path to real chat.db if available.
+    Return path to real chat.db if available and accessible.
 
     This fixture is for integration tests that need to run against
     actual iMessage data. Tests using this fixture should be marked
     with @pytest.mark.integration.
 
     Returns:
-        Path to real chat.db, or skips test if not available.
+        Path to real chat.db, or skips test if not available/accessible.
     """
     path = Path.home() / "Library" / "Messages" / "chat.db"
     if not path.exists():
         pytest.skip("Real chat.db not available")
+
+    # Also verify we can actually open it (may fail due to permissions)
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        conn.execute("SELECT 1 FROM message LIMIT 1")
+        conn.close()
+    except sqlite3.OperationalError:
+        pytest.skip("Cannot access chat.db (permission denied or locked)")
+
     return path
 
 
