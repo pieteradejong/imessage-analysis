@@ -58,7 +58,7 @@ addopts = [
     "--cov=imessage_analysis",
     "--cov-report=term-missing",
     "--cov-report=html:htmlcov",
-    "--cov-fail-under=30",
+    "--cov-fail-under=50",
 ]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

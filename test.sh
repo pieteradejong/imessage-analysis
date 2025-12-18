@@ -76,7 +76,11 @@ IMPORT_FAILED=0
 for module in imessage_analysis imessage_analysis.config imessage_analysis.database \
               imessage_analysis.queries imessage_analysis.analysis \
               imessage_analysis.snapshot imessage_analysis.utils \
-              imessage_analysis.api imessage_analysis.visualization; do
+              imessage_analysis.api imessage_analysis.visualization \
+              imessage_analysis.etl imessage_analysis.etl.schema \
+              imessage_analysis.etl.normalizers imessage_analysis.etl.extractors \
+              imessage_analysis.etl.loaders imessage_analysis.etl.identity \
+              imessage_analysis.etl.pipeline imessage_analysis.etl.validation; do
   if "${PY}" -c "import $module" 2>/dev/null; then
     print_success "Can import: $module"
   else
@@ -111,9 +115,10 @@ echo "Running pytest with coverage..."
 if run_test "${PY}" -m pytest --cov=imessage_analysis \
   --cov-report=term-missing \
   --cov-report=html:htmlcov \
-  --cov-fail-under=30 \
+  --cov-fail-under=50 \
   -v \
-  --tb=short; then
+  --tb=short \
+  -m "not integration"; then
   print_success "All unit tests passed"
   
   # Show coverage summary
@@ -146,6 +151,13 @@ MODULES=(
   "imessage_analysis.snapshot:create_timestamped_snapshot"
   "imessage_analysis.utils:format_timestamp,format_message_count"
   "imessage_analysis.api:health,summary,latest,top_chats"
+  "imessage_analysis.etl.schema:create_schema,verify_schema"
+  "imessage_analysis.etl.normalizers:normalize_phone,normalize_email,detect_contact_type"
+  "imessage_analysis.etl.extractors:extract_handles,extract_messages"
+  "imessage_analysis.etl.loaders:load_handles,load_messages"
+  "imessage_analysis.etl.identity:resolve_all_handles,create_unknown_person"
+  "imessage_analysis.etl.pipeline:run_etl,get_etl_status"
+  "imessage_analysis.etl.validation:validate_etl"
 )
 
 for module_info in "${MODULES[@]}"; do
@@ -159,6 +171,38 @@ for module_info in "${MODULES[@]}"; do
     MISSING_TESTS=$((MISSING_TESTS + 1))
   fi
 done
+
+# 8. ETL Module Tests
+print_header "8️⃣  ETL Module Tests"
+echo "Running ETL-specific tests..."
+if run_test "${PY}" -m pytest tests/test_normalizers.py tests/test_schema.py tests/test_extractors.py tests/test_loaders.py tests/test_identity.py tests/test_pipeline.py tests/test_contacts_extractors.py tests/test_contacts_loaders.py tests/test_identity_resolution.py tests/test_contacts_integration.py -v --tb=short -m "not integration" 2>&1 | tail -30; then
+  print_success "ETL module tests passed"
+else
+  print_error "ETL module tests failed"
+fi
+
+# 9. Integration Tests (optional, may use real data)
+print_header "9️⃣  Integration Tests"
+echo "Running integration tests (uses real chat.db if available)..."
+# Run integration tests - they may fail if real chat.db is not accessible
+INTEGRATION_OUTPUT=$("${PY}" -m pytest -m integration -v --tb=short 2>&1 || true)
+echo "$INTEGRATION_OUTPUT" | tail -30
+
+# Check if all tests were skipped (no real data available)
+SKIP_COUNT=$(echo "$INTEGRATION_OUTPUT" | grep -c "SKIPPED" || echo "0")
+PASS_COUNT=$(echo "$INTEGRATION_OUTPUT" | grep -c "PASSED" || echo "0")
+FAIL_COUNT=$(echo "$INTEGRATION_OUTPUT" | grep -c "FAILED" || echo "0")
+
+if [[ "$FAIL_COUNT" -eq 0 ]]; then
+  if [[ "$SKIP_COUNT" -gt 0 ]] && [[ "$PASS_COUNT" -eq 0 ]]; then
+    echo -e "${YELLOW}⚠${NC}  Integration tests skipped (no real chat.db available)"
+  else
+    print_success "Integration tests passed"
+  fi
+  TESTS_PASSED=$((TESTS_PASSED + 1))
+else
+  print_error "Integration tests failed"
+fi
 
 # Final Summary
 echo ""

@@ -869,3 +869,349 @@ def test_get_latest_messages_default_limit():
 13. **Set coverage thresholds** to enforce minimum test coverage
 14. **Scan for security issues** with bandit in addition to code review
 15. **Organize tests by module** - one test file per source module
+
+## ETL & Data Architecture
+
+### Why a Derived Database (analysis.db)?
+
+When working with Apple's iMessage data, you're dealing with **two separate databases**:
+
+1. **chat.db** (Messages) - A hand-designed relational schema, relatively stable
+2. **AddressBook-vXX.abcddb** (Contacts) - A Core Data object graph, **not designed for analytics**
+
+Direct cross-database joins are fragile because:
+- The Contacts schema changes between macOS versions
+- Core Data tables use opaque `Z*` prefixes and unstable primary keys
+- You can't safely add indexes or make modifications
+
+**Solution: Create a derived database you own (`analysis.db`)**
+
+This is a **translation boundary** - a local data warehouse that:
+- Isolates your analytics from Apple's schema churn
+- Provides stable, indexed tables for fast queries
+- Supports incremental updates via ETL state tracking
+- Allows future migration to DuckDB/Postgres if needed
+
+### Dimensional Modeling Choices
+
+We use dimensional modeling conventions (`dim_*` / `fact_*`):
+
+```
+dim_person        - Canonical human identities
+dim_contact_method - Normalized phones/emails linked to persons
+dim_handle        - Bridges iMessage handles to persons
+fact_message      - Main analytical fact table
+etl_state         - Tracks sync progress for incremental updates
+```
+
+**Why this structure:**
+- **Star schema** allows fast analytical queries with minimal joins
+- **Dimension tables** (`dim_*`) contain descriptive attributes
+- **Fact tables** (`fact_*`) contain measurements (messages)
+- **Denormalized person_id in fact_message** - trades storage for query speed
+
+### Phone Normalization Strategy
+
+All phone numbers are normalized to **E.164 format**: `+[country code][number]`
+
+Examples:
+- `(415) 555-1234` → `+14155551234`
+- `415-555-1234` → `+14155551234`
+- `+44 20 7946 0958` → `+442079460958`
+
+**Normalization rules:**
+1. Strip all non-digit characters
+2. If 10 digits (US), prepend `+1`
+3. If 11 digits starting with `1` (US with country code), prepend `+`
+4. If already has `+` prefix, preserve country code
+5. If ≥7 digits, prepend `+` (best effort)
+6. Otherwise, return original (can't normalize)
+
+**Edge cases:**
+- Letters in phone numbers (e.g., `1-800-FLOWERS`) - returned as-is if not enough digits
+- Very short numbers - returned as-is
+- Empty/null values - returned as-is
+
+### Identity Resolution as a Process
+
+Identity resolution is **not a simple JOIN** - it's a multi-step process:
+
+1. **Extract handles** from chat.db with both raw and normalized values
+2. **Match handles** against dim_contact_method by normalized value
+3. **Create inferred persons** for unmatched handles (source='inferred')
+4. **Link handles to persons** in dim_handle.person_id
+5. **Denormalize person_id** into fact_message for fast queries
+
+**Why this approach:**
+- Separates the matching logic from the data structure
+- Supports manual overrides (source='manual')
+- Caches resolution results (no re-matching on every query)
+- Prepares for future Contacts integration
+
+### Incremental ETL Patterns
+
+**Never rebuild everything.** Use incremental sync via `etl_state`:
+
+```sql
+-- Track last synced message date
+SELECT value FROM etl_state WHERE key = 'last_message_date';
+
+-- Extract only newer messages
+SELECT * FROM message WHERE date > ?;
+```
+
+**Incremental strategy:**
+1. Check `etl_state.last_message_date`
+2. Extract only messages after that date
+3. Load new messages (INSERT OR IGNORE)
+4. Update `etl_state.last_message_date` with max date
+5. Upsert handles (they may change display info)
+
+**Benefits:**
+- Fast startup even with large message histories
+- Minimal disk I/O for incremental updates
+- Idempotent - safe to run multiple times
+
+### SQLite for Local Data Warehousing
+
+SQLite is **good enough** for local analytics:
+
+**When SQLite works:**
+- Single user, read-heavy workloads
+- Database fits in memory (or SSD is fast enough)
+- No concurrent writes needed
+- Simple deployment (single file)
+
+**When to upgrade:**
+- Need concurrent writes from multiple processes
+- Database exceeds available RAM significantly
+- Need advanced analytics (window functions with large windows)
+- Need columnar storage (consider DuckDB)
+
+**Our approach:**
+- Start with SQLite for simplicity
+- Design schema to be portable (standard SQL)
+- Can migrate to DuckDB or Postgres later if needed
+
+### Validation Checks
+
+After ETL, run automated validation:
+
+| Check | What It Validates |
+|-------|-------------------|
+| `check_handle_count` | All handles from chat.db exist in dim_handle |
+| `check_message_count` | Message counts match (target ≤ source) |
+| `check_no_orphan_messages` | All handle_ids reference valid handles |
+| `check_normalization_quality` | Phones are E.164 format (≥90%) |
+| `check_etl_state` | ETL state contains valid sync timestamps |
+| `check_date_formats` | All dates are valid ISO-8601 |
+
+**Usage:**
+```python
+from imessage_analysis.etl import validate_etl
+result = validate_etl(chat_db_path, analysis_db_path)
+print(result)  # Shows ✓/✗ for each check
+```
+
+### Testing ETL Code
+
+**Test fixtures** create isolated sample databases:
+
+```python
+@pytest.fixture
+def sample_chat_db(tmp_path) -> Path:
+    """Create minimal chat.db with test data."""
+    # Creates handles, messages, chats in temp directory
+
+@pytest.fixture
+def empty_analysis_db(tmp_path) -> Path:
+    """Create empty analysis.db with schema."""
+    create_schema(tmp_path / "analysis.db")
+```
+
+**Integration tests** use real data when available:
+
+```python
+@pytest.mark.integration
+def test_real_etl(real_chat_db, tmp_path):
+    """Run ETL against real chat.db."""
+    # Skipped if ~/Library/Messages/chat.db doesn't exist
+```
+
+### Key ETL Takeaways
+
+1. **Treat Apple DBs as unstable external APIs** - read-only, explicit column lists
+2. **Create a derived database you own** - stable schema, indexed, query-friendly
+3. **Identity resolution is a process** - not a join, cache results
+4. **Use incremental sync** - track state, avoid full rebuilds
+5. **Validate after ETL** - automated checks catch data quality issues
+6. **Test with fixtures and real data** - both synthetic and integration tests
+7. **Document design decisions** - in code docstrings and LEARNINGS.md
+
+## Contacts Database (AddressBook) Integration
+
+### Accessing the macOS Contacts Database
+
+Apple's Contacts app stores data in a Core Data database at:
+```
+~/Library/Application Support/AddressBook/AddressBook-vXX.abcddb
+```
+
+**Important constraints:**
+- Requires **Full Disk Access** on macOS (Security & Privacy settings)
+- Uses Core Data schema with `Z*`-prefixed tables
+- Primary keys (`Z_PK`) are **not stable** across syncs
+- Schema changes between macOS versions
+
+### Core Data Schema Conventions
+
+The Contacts database uses Core Data conventions:
+
+| Table | Purpose | Key Columns |
+|-------|---------|-------------|
+| `ZABCDRECORD` | Contact records | `Z_PK`, `ZFIRSTNAME`, `ZLASTNAME`, `ZORGANIZATION` |
+| `ZABCDPHONENUMBER` | Phone numbers | `Z_PK`, `ZOWNER` (→ ZABCDRECORD), `ZFULLNUMBER` |
+| `ZABCDEMAILADDRESS` | Email addresses | `Z_PK`, `ZOWNER` (→ ZABCDRECORD), `ZADDRESS` |
+
+**Core Data naming:**
+- `Z_PK` - Primary key (integer, auto-incremented)
+- `Z*` prefix - Core Data managed columns
+- `ZOWNER` - Foreign key to parent record
+
+### Graceful Permission Handling
+
+Since Contacts DB requires Full Disk Access, handle permission denial gracefully:
+
+```python
+def _open_contacts_db(path: Path) -> Optional[sqlite3.Connection]:
+    """Open AddressBook, returning None if permission denied."""
+    try:
+        uri = f"file:{path}?mode=ro"
+        conn = sqlite3.connect(uri, uri=True)
+        # Test if we can actually query it
+        conn.execute("SELECT 1 FROM ZABCDRECORD LIMIT 1")
+        return conn
+    except sqlite3.OperationalError:
+        logger.warning("Cannot access Contacts DB (Full Disk Access required)")
+        return None
+```
+
+**Key practices:**
+- **Test the connection** with a simple query (not just opening)
+- **Return None** instead of raising - let the pipeline continue without contacts
+- **Log a warning** so users know why contacts weren't synced
+
+### Enhanced Identity Resolution
+
+With contacts data, identity resolution becomes more accurate:
+
+**Resolution strategy (in order):**
+1. **Exact match** - Normalized handle matches dim_contact_method.value_normalized
+2. **Fuzzy phone match** - Last 10 digits of phone match (handles format variations)
+3. **Create inferred person** - No match found, create placeholder
+
+```python
+def resolve_handle_to_person(conn, handle_normalized, handle_type):
+    # 1. Try exact match
+    person_id = exact_match(handle_normalized)
+    if person_id:
+        return person_id
+    
+    # 2. Try fuzzy phone match (last 10 digits)
+    if handle_type == "phone":
+        person_id = fuzzy_phone_match(handle_normalized)
+        if person_id:
+            return person_id
+    
+    return None  # Will create inferred person
+```
+
+**Why last 10 digits?**
+- US phone numbers are 10 digits
+- Country codes vary in length (+1, +44, +852)
+- Normalizing both sides still may have format variations
+- Last 10 digits catches most real-world cases
+
+### Contact Loading Strategy
+
+Contacts are loaded into `dim_person` and `dim_contact_method`:
+
+1. **Extract contacts** from ZABCDRECORD
+2. **Generate UUID** for each contact (don't use Z_PK - not stable)
+3. **Build display name** from first + last name (or organization)
+4. **Set source='contacts'** to distinguish from inferred persons
+5. **Load contact methods** (phones/emails) linked to person UUIDs
+
+**Display name priority:**
+1. First + Last name ("John Doe")
+2. First name only ("John")
+3. Last name only ("Doe")
+4. Organization ("Apple Inc")
+5. Nickname
+6. "Unknown Contact"
+
+### Testing with Mock Contacts Database
+
+Create a minimal Contacts DB fixture for testing:
+
+```python
+@pytest.fixture
+def sample_contacts_db(tmp_path) -> Path:
+    """Create minimal AddressBook with Core Data schema."""
+    db_path = tmp_path / "AddressBook-v22.abcddb"
+    conn = sqlite3.connect(str(db_path))
+    
+    # Create Core Data schema
+    conn.executescript("""
+        CREATE TABLE ZABCDRECORD (
+            Z_PK INTEGER PRIMARY KEY,
+            ZFIRSTNAME TEXT,
+            ZLASTNAME TEXT,
+            ZORGANIZATION TEXT,
+            ZNICKNAME TEXT
+        );
+        
+        CREATE TABLE ZABCDPHONENUMBER (
+            Z_PK INTEGER PRIMARY KEY,
+            ZOWNER INTEGER,
+            ZFULLNUMBER TEXT,
+            ZLABEL TEXT
+        );
+        
+        CREATE TABLE ZABCDEMAILADDRESS (
+            Z_PK INTEGER PRIMARY KEY,
+            ZOWNER INTEGER,
+            ZADDRESS TEXT,
+            ZLABEL TEXT
+        );
+    """)
+    
+    # Insert test data...
+    return db_path
+```
+
+### Contacts Validation Checks
+
+After ETL with contacts, additional validation:
+
+| Check | What It Validates |
+|-------|-------------------|
+| `check_contacts_loaded` | dim_person has source='contacts' entries |
+| `check_contact_methods_linked` | All contact methods have valid person_id |
+| `check_identity_resolution_rate` | % of handles resolved to contacts vs inferred |
+
+**Example output:**
+```
+✓ Contacts loaded - 156 contacts (45.2% of 345 persons)
+✓ Contact methods linked - 289 methods, all linked
+✓ Identity resolution rate - 32.5% resolved to contacts (67/206)
+```
+
+### Key Contacts Integration Takeaways
+
+1. **Handle permission denial gracefully** - Return None, don't crash
+2. **Don't trust Z_PK stability** - Generate your own UUIDs
+3. **Use fuzzy phone matching** - Last 10 digits handles format variations
+4. **Set source='contacts'** vs 'inferred' - Track provenance
+5. **Test with mock databases** - Create fixtures with Core Data schema
+6. **Validate contact loading** - Check links and resolution rates

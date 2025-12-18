@@ -747,11 +747,563 @@ The database includes **15+ triggers** that:
 
 ---
 
+## Location Data & Geographic Analysis
+
+### Available Location Data Sources
+
+The iMessage database provides several sources of location information, though none provide precise GPS coordinates directly in the database:
+
+#### 1. Country Codes (Phone Number Based)
+
+**Source**: `handle.country` and `message.country` fields
+
+**What it contains**:
+- Country code derived from phone number formatting
+- Example values: "US", "CA", "GB", "FR", etc.
+- May be NULL for email-based contacts
+
+**Limitations**:
+- Only country-level granularity (not city/state)
+- Based on phone number format, not actual location
+- May not reflect current location (e.g., someone with a US number living abroad)
+
+**Query Example**:
+```sql
+SELECT 
+    handle.country,
+    COUNT(*) AS contact_count
+FROM handle
+WHERE handle.country IS NOT NULL
+GROUP BY handle.country
+ORDER BY contact_count DESC;
+```
+
+**Visualization Opportunities**:
+- **World Map**: Country distribution of contacts
+- **Bar Chart**: Top countries by contact count
+- **Pie Chart**: Country breakdown percentage
+- **Timeline**: Country distribution over time (if tracking changes)
+
+---
+
+#### 2. Physical Addresses (Contacts Database)
+
+**Source**: `ZABCDPOSTALADDRESS` table in Contacts database
+
+**Location**: `~/Library/Application Support/AddressBook/AddressBook-v22.abcddb`
+
+**What it contains**:
+- Street addresses
+- City, state/province, postal code
+- Country
+- Address type (home, work, other)
+
+**Access Method**:
+```python
+import sqlite3
+from pathlib import Path
+
+contacts_db = Path.home() / "Library/Application Support/AddressBook/AddressBook-v22.abcddb"
+
+conn = sqlite3.connect(f"file:{contacts_db}?mode=ro", uri=True)
+
+# Get addresses for contacts
+cursor = conn.execute("""
+    SELECT 
+        r.ZFIRSTNAME || ' ' || r.ZLASTNAME AS name,
+        a.ZSTREET,
+        a.ZCITY,
+        a.ZSTATE,
+        a.ZZIPCODE,
+        a.ZCOUNTRY,
+        a.ZLABEL  -- 'home', 'work', etc.
+    FROM ZABCDRECORD r
+    JOIN ZABCDPOSTALADDRESS a ON r.Z_PK = a.ZOWNER
+    WHERE a.ZSTREET IS NOT NULL
+""")
+```
+
+**Linking to chat.db**:
+```sql
+-- Link contacts to handles via phone/email
+SELECT 
+    chat.display_name,
+    handle.id,
+    -- Join to Contacts DB to get address
+    contact_address.ZCITY,
+    contact_address.ZSTATE,
+    contact_address.ZCOUNTRY
+FROM chat
+JOIN handle ON chat.chat_identifier = handle.id
+-- Then join to Contacts DB (requires separate connection)
+```
+
+**Visualization Opportunities**:
+- **Geographic Map**: Plot contacts by address on world map
+- **City Distribution**: Bar chart of cities
+- **Distance Analysis**: Calculate distances between contacts
+- **Regional Clusters**: Group contacts by region/state
+- **Travel Patterns**: If tracking address changes over time
+
+**Privacy Note**: Physical addresses are sensitive data - handle with care.
+
+---
+
+#### 3. Shared Location URLs (Message Text)
+
+**Source**: `message.text` field containing Apple Maps URLs
+
+**What it contains**:
+- When users share their location via iMessage, it creates a message with an Apple Maps URL
+- URL format: `https://maps.apple.com/?ll=LATITUDE,LONGITUDE` or `http://maps.apple.com/?ll=LATITUDE,LONGITUDE`
+- Coordinates are embedded in the URL query parameters
+- May also include address information in the URL
+
+**Query Example**:
+```sql
+SELECT 
+    message.ROWID,
+    message.text,
+    message.date,
+    chat.display_name,
+    message.is_from_me
+FROM message
+JOIN chat_message_join ON message.ROWID = chat_message_join.message_id
+JOIN chat ON chat_message_join.chat_id = chat.ROWID
+WHERE message.text LIKE '%maps.apple.com%'
+   OR message.text LIKE '%maps.google.com%'
+ORDER BY message.date DESC;
+```
+
+**Extracting Coordinates**:
+```python
+import re
+from urllib.parse import urlparse, parse_qs
+
+def extract_location_from_message(text: str) -> dict | None:
+    """Extract GPS coordinates from Apple Maps URL in message text."""
+    if not text:
+        return None
+    
+    # Look for Apple Maps URLs
+    apple_maps_pattern = r'https?://maps\.apple\.com/\?.*ll=([0-9.-]+),([0-9.-]+)'
+    match = re.search(apple_maps_pattern, text)
+    
+    if match:
+        latitude = float(match.group(1))
+        longitude = float(match.group(2))
+        return {
+            'latitude': latitude,
+            'longitude': longitude,
+            'source': 'shared_location',
+            'url': match.group(0)
+        }
+    
+    # Also check for Google Maps URLs (less common in iMessage)
+    google_maps_pattern = r'https?://(?:www\.)?google\.com/maps.*@([0-9.-]+),([0-9.-]+)'
+    match = re.search(google_maps_pattern, text)
+    
+    if match:
+        latitude = float(match.group(1))
+        longitude = float(match.group(2))
+        return {
+            'latitude': latitude,
+            'longitude': longitude,
+            'source': 'google_maps_share',
+            'url': match.group(0)
+        }
+    
+    return None
+
+# Usage
+query = """
+    SELECT message.text, message.date, chat.display_name
+    FROM message
+    JOIN chat_message_join ON message.ROWID = chat_message_join.message_id
+    JOIN chat ON chat_message_join.chat_id = chat.ROWID
+    WHERE message.text LIKE '%maps.apple.com%'
+"""
+
+for row in db.execute_query(query):
+    text, date, display_name = row
+    location = extract_location_from_message(text)
+    if location:
+        print(f"Location shared by {display_name} at {date}: {location['latitude']}, {location['longitude']}")
+```
+
+**Visualization Opportunities**:
+- **Shared Location Map**: Plot all shared locations on a map
+- **Location Sharing Timeline**: When locations were shared over time
+- **Location by Contact**: Who shares locations most frequently
+- **Location Clusters**: Frequently shared locations
+- **Travel Path**: Connect shared locations chronologically
+
+**Privacy Considerations**:
+- Shared locations are explicit user actions (less sensitive than photo EXIF)
+- Still requires privacy considerations
+- Users intentionally shared these locations
+
+---
+
+#### 4. GPS Coordinates (Photo EXIF Data)
+
+**Source**: EXIF metadata in photo attachments
+
+**Location**: Attachment files in `~/Library/Messages/Attachments/`
+
+**What it contains**:
+- Latitude and longitude coordinates
+- Altitude (sometimes)
+- Timestamp of when photo was taken
+- Camera/device information
+
+**Extraction Method**:
+
+**Option 1: Using Python (Pillow/Piexif)**:
+```python
+from PIL import Image
+from PIL.ExifTags import TAGS, GPSTAGS
+import os
+
+def get_gps_from_image(image_path):
+    """Extract GPS coordinates from image EXIF data."""
+    try:
+        image = Image.open(image_path)
+        exif = image._getexif()
+        
+        if exif is None:
+            return None
+            
+        # Find GPS info
+        for tag_id, value in exif.items():
+            tag = TAGS.get(tag_id, tag_id)
+            if tag == 'GPSInfo':
+                gps_data = {}
+                for gps_tag_id, gps_value in value.items():
+                    gps_tag = GPSTAGS.get(gps_tag_id, gps_tag_id)
+                    gps_data[gps_tag] = gps_value
+                
+                # Convert to decimal degrees
+                lat = gps_data.get('GPSLatitude')
+                lon = gps_data.get('GPSLongitude')
+                if lat and lon:
+                    lat_ref = gps_data.get('GPSLatitudeRef', 'N')
+                    lon_ref = gps_data.get('GPSLongitudeRef', 'E')
+                    
+                    lat_decimal = convert_to_decimal(lat, lat_ref)
+                    lon_decimal = convert_to_decimal(lon, lon_ref)
+                    
+                    return {
+                        'latitude': lat_decimal,
+                        'longitude': lon_decimal,
+                        'altitude': gps_data.get('GPSAltitude')
+                    }
+    except Exception as e:
+        print(f"Error reading EXIF: {e}")
+    return None
+
+def convert_to_decimal(coord, ref):
+    """Convert DMS (degrees, minutes, seconds) to decimal."""
+    degrees, minutes, seconds = coord
+    decimal = degrees + minutes/60.0 + seconds/3600.0
+    if ref in ['S', 'W']:
+        decimal = -decimal
+    return decimal
+```
+
+**Option 2: Using exiftool (command line)**:
+```bash
+# Install: brew install exiftool
+exiftool -GPSLatitude -GPSLongitude -GPSAltitude /path/to/image.jpg
+```
+
+**Finding Attachment Files**:
+```python
+# Attachment files are stored with GUID-based names
+# Path: ~/Library/Messages/Attachments/
+# Filename pattern: {guid}/{filename}
+
+attachment_dir = Path.home() / "Library/Messages/Attachments"
+
+# Query attachment metadata from database
+query = """
+    SELECT 
+        attachment.guid,
+        attachment.filename,
+        attachment.created_date,
+        message.date AS message_date,
+        chat.display_name
+    FROM attachment
+    JOIN message_attachment_join ON attachment.ROWID = message_attachment_join.attachment_id
+    JOIN message ON message_attachment_join.message_id = message.ROWID
+    JOIN chat_message_join ON message.ROWID = chat_message_join.message_id
+    JOIN chat ON chat_message_join.chat_id = chat.ROWID
+    WHERE attachment.mime_type LIKE 'image/%'
+    ORDER BY attachment.created_date DESC
+"""
+
+# Then find file and extract GPS
+for row in results:
+    guid, filename, created_date, message_date, display_name = row
+    file_path = attachment_dir / guid / filename
+    if file_path.exists():
+        gps = get_gps_from_image(file_path)
+        if gps:
+            # Store GPS data for visualization
+            pass
+```
+
+**Visualization Opportunities**:
+- **Photo Map**: Plot photos on world map by GPS coordinates
+- **Location Timeline**: Show where photos were taken over time
+- **Location Heatmap**: Density map of photo locations
+- **Travel Path**: Connect photo locations chronologically
+- **Location by Contact**: Where photos were shared with each contact
+- **Location Clusters**: Identify frequently visited places
+
+**Privacy Considerations**:
+- GPS coordinates are highly sensitive
+- Many users may have location services disabled
+- Photos may not always have GPS data (screenshots, downloaded images)
+- Consider opt-in/opt-out for location-based features
+
+---
+
+#### 5. Time Zone Inference
+
+**Source**: Activity patterns and message timestamps
+
+**What it can tell you**:
+- Approximate time zone based on activity patterns
+- When contacts are most active (suggests their time zone)
+- Travel patterns (if activity shifts to different hours)
+
+**Method**:
+```python
+# Analyze activity patterns to infer time zones
+# If someone is consistently active at 2-4 AM your time,
+# they might be in a different time zone
+
+query = """
+    SELECT 
+        chat.display_name,
+        CAST(strftime('%H', 
+            datetime(message.date / 1000000000 + strftime("%s", "2001-01-01"), 
+                    "unixepoch", "localtime")) AS INTEGER) AS hour_of_day,
+        COUNT(*) AS message_count
+    FROM message
+    JOIN chat_message_join ON message.ROWID = chat_message_join.message_id
+    JOIN chat ON chat_message_join.chat_id = chat.ROWID
+    WHERE message.is_from_me = 0
+    GROUP BY chat.display_name, hour_of_day
+    ORDER BY message_count DESC
+"""
+```
+
+**Limitations**:
+- Not precise (people have different sleep schedules)
+- Doesn't account for night shifts, travel, etc.
+- Only suggests time zone, doesn't confirm location
+
+---
+
+### Location Data Summary
+
+| Data Source | Granularity | Availability | Privacy Level |
+|------------|-------------|--------------|---------------|
+| `handle.country` | Country | High (most contacts) | Low sensitivity |
+| `message.country` | Country | Medium | Low sensitivity |
+| **Shared Location URLs** | **Precise coordinates** | **Medium (when shared)** | **Medium sensitivity** |
+| Contacts addresses | Street/City | Medium (if in Contacts) | High sensitivity |
+| Photo EXIF GPS | Precise coordinates | Low (only photos with location) | Very high sensitivity |
+| Time zone inference | Approximate | High | Low sensitivity |
+
+---
+
+### Visualization Components for Location
+
+#### `CountryDistribution`
+**Purpose**: Show contact distribution by country
+
+**Data**: `handle.country` aggregated counts
+
+**Visualization**: 
+- World map with country shading
+- Bar chart of top countries
+- Pie chart percentage breakdown
+
+**API Endpoint**: `/stats/countries`
+
+---
+
+#### `ContactMap`
+**Purpose**: Plot contacts on map by address
+
+**Data**: Contacts database `ZABCDPOSTALADDRESS` joined to `handle`
+
+**Visualization**:
+- Interactive map (Google Maps, Mapbox, Leaflet)
+- Markers for each contact
+- Clustering for dense areas
+- Click marker to see contact info
+
+**API Endpoint**: `/contacts/map`
+
+**Privacy**: Requires explicit opt-in, anonymize for export
+
+---
+
+#### `SharedLocationMap`
+**Purpose**: Show locations shared via iMessage
+
+**Data**: GPS coordinates extracted from Apple Maps URLs in `message.text`
+
+**Visualization**:
+- Map with location markers
+- Timeline slider to show shared locations over time
+- Heatmap of shared location density
+- Travel path connecting shared locations chronologically
+- Location by Contact: Who shared locations and when
+- Location Clusters: Frequently shared locations
+
+**API Endpoint**: `/messages/shared-locations`
+
+**Privacy**: Medium sensitivity - users explicitly shared these
+
+---
+
+#### `PhotoLocationMap`
+**Purpose**: Show where photos were taken
+
+**Data**: GPS coordinates extracted from photo EXIF data
+
+**Visualization**:
+- Map with photo markers
+- Timeline slider to show photos over time
+- Heatmap of photo density
+- Travel path connecting photos chronologically
+
+**API Endpoint**: `/attachments/locations`
+
+**Privacy**: Very sensitive - require explicit consent
+
+---
+
+#### `LocationTimeline`
+**Purpose**: Show location activity over time
+
+**Data**: GPS coordinates with timestamps
+
+**Visualization**:
+- Timeline with location markers
+- Map view synchronized with timeline
+- Filter by contact or date range
+
+---
+
+### Implementation Considerations
+
+1. **Privacy First**:
+   - Location data is highly sensitive
+   - Require explicit opt-in for location features
+   - Anonymize data for exports
+   - Clear privacy warnings
+
+2. **Performance**:
+   - EXIF extraction is slow (process in background)
+   - Cache GPS coordinates after extraction
+   - Use geocoding services sparingly (rate limits)
+
+3. **Data Quality**:
+   - Not all photos have GPS data
+   - Country codes may be inaccurate
+   - Addresses may be outdated
+   - Validate and handle missing data gracefully
+
+4. **Geocoding**:
+   - Convert addresses to coordinates: Google Geocoding API, Mapbox, OpenStreetMap
+   - Cache results (addresses don't change often)
+   - Handle API rate limits
+
+---
+
+### Query Examples
+
+#### Get Country Distribution
+```sql
+SELECT 
+    handle.country,
+    COUNT(DISTINCT handle.ROWID) AS contact_count,
+    COUNT(*) AS message_count
+FROM handle
+JOIN message ON handle.ROWID = message.handle_id
+WHERE handle.country IS NOT NULL
+GROUP BY handle.country
+ORDER BY contact_count DESC;
+```
+
+#### Get Messages by Country
+```sql
+SELECT 
+    message.country,
+    COUNT(*) AS message_count,
+    MIN(datetime(message.date / 1000000000 + strftime("%s", "2001-01-01"), "unixepoch", "localtime")) AS first_message,
+    MAX(datetime(message.date / 1000000000 + strftime("%s", "2001-01-01"), "unixepoch", "localtime")) AS last_message
+FROM message
+WHERE message.country IS NOT NULL
+GROUP BY message.country;
+```
+
+#### Get Shared Locations from Messages
+```sql
+SELECT 
+    message.ROWID,
+    message.text,
+    message.date,
+    chat.display_name,
+    message.is_from_me,
+    datetime(message.date / 1000000000 + strftime("%s", "2001-01-01"), "unixepoch", "localtime") AS readable_date
+FROM message
+JOIN chat_message_join ON message.ROWID = chat_message_join.message_id
+JOIN chat ON chat_message_join.chat_id = chat.ROWID
+WHERE message.text LIKE '%maps.apple.com%'
+   OR message.text LIKE '%maps.google.com%'
+ORDER BY message.date DESC;
+```
+
+**Note**: Coordinates need to be extracted from URLs using regex/parsing (see Python example above).
+
+---
+
+#### Get Contacts with Addresses (requires Contacts DB join)
+```python
+# This requires joining two databases
+contacts_db = sqlite3.connect(f"file:{contacts_db_path}?mode=ro", uri=True)
+chat_db = sqlite3.connect(f"file:{chat_db_path}?mode=ro", uri=True)
+
+# Get handles from chat.db
+handles = chat_db.execute("SELECT id, person_centric_id FROM handle").fetchall()
+
+# For each handle, try to find address in Contacts DB
+for handle_id, person_id in handles:
+    if person_id:
+        # Use person_centric_id to find contact
+        address = contacts_db.execute("""
+            SELECT ZSTREET, ZCITY, ZSTATE, ZZIPCODE, ZCOUNTRY
+            FROM ZABCDPOSTALADDRESS
+            WHERE ZOWNER = (SELECT Z_PK FROM ZABCDRECORD WHERE Z_PK = ?)
+            LIMIT 1
+        """, (person_id,)).fetchone()
+```
+
+---
+
 ## References
 
 - [SQLite Documentation](https://www.sqlite.org/docs.html)
 - [iMessage Database Analysis](https://stmorse.github.io/journal/iMessage.html)
 - [Mac Address Book Schema](https://michaelwornow.net/2024/12/24/mac-address-book-schema)
+- [EXIF GPS Data Extraction](https://www.makeuseof.com/how-to-view-exif-metadata-on-mac/)
 
 ---
 
